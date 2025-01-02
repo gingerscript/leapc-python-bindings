@@ -75,6 +75,8 @@ class ActionController():
 
             hand_type = "left" if str(hand.type) == "HandType.Left" else "right"
             
+            print('hand detected')
+            
             hand_pos = hand.palm.position
             self.max_min_x = [max(self.max_min_x[0], hand_pos.x), min(self.max_min_x[1], hand_pos.x)]
             self.max_min_y = [max(self.max_min_y[0], hand_pos.y), min(self.max_min_y[1], hand_pos.y)]
@@ -107,7 +109,7 @@ class ActionController():
         # Move Cursor
         ctypes.windll.user32.SetCursorPos(int(x), int(y))
     
-    def trigger_click_event():
+    def trigger_click_event(self):
         ctypes.windll.user32.mouse_event(ActionController.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)  # Simulate left button press
         ctypes.windll.user32.mouse_event(ActionController.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)    # Simulate left button release
         
@@ -117,6 +119,9 @@ class MyListener(leap.Listener):
         super().__init__()
         self.action_controller = action_controller
         self.state = 0  # FSM states 0: Sleep, 1: Active, 2: Setup
+        
+    def set_state(self, state):
+        self.state = state
     
     def on_connection_event(self, event):
         print("Connected")
@@ -133,7 +138,7 @@ class MyListener(leap.Listener):
         print(f"Found device {info.serial}")
 
     def on_tracking_event(self, event):
-        print(f"Frame {event.tracking_frame_id} with {len(event.hands)} hands.")
+        # print(f"Frame {event.tracking_frame_id} with {len(event.hands)} hands.")
         
         
         self.action_controller.tracking_event_router(event, self.state)
@@ -157,7 +162,27 @@ def main():
 
     with connection.open():
         connection.set_tracking_mode(leap.TrackingMode.Desktop)
+        print("Select the following Modes: \n a: Active \n s: Sleep \n c: Setup \n x: quit")
         while running:
+            user_input = input("Enter your choice: ").strip().lower()
+            
+            if user_input == "a":
+                print("Switching to Active Mode...")
+                my_listener.set_state(1)
+                
+            elif user_input == "s":
+                print("Switching to Sleep Mode...")
+                my_listener.set_state(0)
+                
+            elif user_input == "c":
+                print("Switching to Setup Mode...")
+                my_listener.set_state(2)
+                
+            elif user_input == "x":
+                print("Exiting...")
+                running = False
+            else:
+                print("Invalid input. Please select a valid option.")
             time.sleep(1)
 
 
