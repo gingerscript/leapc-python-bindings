@@ -6,6 +6,8 @@ server and a device being plugged in also generate logs.
 
 import leap
 import time
+import json
+import os
 
 # FOR WINDOWS TODO: Add if windows
 import ctypes
@@ -19,13 +21,13 @@ class ActionController():
         self.hand_press_time = {"left": 0.0, "right": 0.0}
 
         # Pinch thresholds
-        self.pinch_threshold = 0.7
+        self.pinch_threshold = 0.6
         
         # Grab thresholds
         self.grab_threshold = 0.9
 
         # Common “short vs hold” threshold (seconds)
-        self.hold_threshold = 0.5
+        self.hold_threshold = 0.3
 
         # For “grab to scroll”
         self.scroll_sensitivity = 1.0
@@ -52,6 +54,37 @@ class ActionController():
         self.x_max = self.cap_width
         self.y_min = 0
         self.y_max = self.cap_height
+        
+    def save_config(self, filename="play_area_config.json"):
+        """
+        Save the current max/min configurations to a JSON file.
+        """
+        config = {
+            "max_min_x": self.max_min_x,
+            "max_min_y": self.max_min_y,
+            "max_min_z": self.max_min_z
+        }
+        with open(filename, "w") as f:
+            json.dump(config, f, indent=2)
+        print(f"Configuration saved to {filename}")
+
+    def load_config(self, filename="play_area_config.json"):
+        """
+        Load the max/min configurations from a JSON file, if it exists.
+        """
+        if not os.path.exists(filename):
+            print(f"No config file found at {filename}. Using defaults.")
+            return
+
+        with open(filename, "r") as f:
+            config = json.load(f)
+        
+        # Update your ActionController attributes
+        self.max_min_x = config.get("max_min_x", self.max_min_x)
+        self.max_min_y = config.get("max_min_y", self.max_min_y)
+        self.max_min_z = config.get("max_min_z", self.max_min_z)
+
+        print(f"Configuration loaded from {filename}")
 
     # This serves as an event router, taking routing event data to the proper handler
     def tracking_event_router(self, event, state):
@@ -188,7 +221,7 @@ class ActionController():
         (or reverse if needed).
         """
         delta = current_y - self.last_scroll_y
-        print(delta)
+        # print(delta)
         
         scroll_amount = int(-1 * delta * self.scroll_sensitivity * 120)
 
@@ -198,14 +231,6 @@ class ActionController():
             ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, scroll_amount, 0)
 
         self.last_scroll_y = current_y
-
-
-
-                
-   
-
-
-
     
     def update_left_grab_state(self, grab_strength):
         """
@@ -271,6 +296,9 @@ class ActionController():
         
         if self.cap_width <= 0 or self.cap_height <= 0:
             raise ValueError("Capture dimensions must be greater than zero.")
+
+        # Once we finish updating:
+        self.save_config()
 
         
         
@@ -353,6 +381,8 @@ class MyListener(leap.Listener):
 
 def main():
     action_controller = ActionController()
+    # Load the previously saved config (if any)
+    action_controller.load_config()
     my_listener = MyListener(action_controller)
     
 
