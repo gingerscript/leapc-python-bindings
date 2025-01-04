@@ -105,7 +105,7 @@ class ActionController():
             
             if hand_type == "right":
                 # Move cursor
-                pointer_x, pointer_y = hand.palm.position.x, hand.palm.position.z
+                pointer_x, pointer_y, pointer_z = hand.palm.position.x, hand.palm.position.y, hand.palm.position.z
                 self.move_cursor(pointer_x, pointer_y, 1, 1)
 
                 # Pinch + Grab combined logic
@@ -314,6 +314,8 @@ class ActionController():
         Maps the device x,y position to the full screen resolution,
         using min and max from setup_handler.
         """
+        y_axis_offset = 0.1
+        
         # 1. Calculate the ranges
         range_x = self.max_min_x[0] - self.max_min_x[1]  # e.g. 200 - (-200) = 400
         range_y = self.max_min_y[0] - self.max_min_y[1]  # e.g. 100 - (-100) = 200
@@ -325,14 +327,15 @@ class ActionController():
 
         # 2. Normalize [min..max] to [0..1]
         normalized_x = (x - self.max_min_x[1]) / range_x
-        normalized_y = (y - self.max_min_y[1]) / range_y
+        normalized_y = ((y - self.max_min_y[1]) / range_y) - y_axis_offset
+        
         
         # 3. Multiply by screen size
         screen_x = normalized_x * self.screen_width  * scaling_x
-        screen_y = normalized_y * self.screen_height * scaling_y
+        # screen_y = normalized_y * self.screen_height * scaling_y
 
         # Optionally invert Y if needed
-        # screen_y = (1 - normalized_y) * self.screen_height * scaling_y
+        screen_y = (1 - normalized_y) * self.screen_height * scaling_y
 
         # 4. Clamp
         screen_x = max(0, min(screen_x, self.screen_width - 1))
