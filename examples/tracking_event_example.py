@@ -21,7 +21,7 @@ class ActionController():
         self.hand_press_time = {"left": 0.0, "right": 0.0}
 
         # Pinch thresholds
-        self.pinch_threshold = 0.6
+        self.pinch_threshold = 0.8
         
         # Grab thresholds
         self.grab_threshold = 0.9
@@ -30,7 +30,7 @@ class ActionController():
         self.hold_threshold = 0.3
 
         # For “grab to scroll”
-        self.scroll_sensitivity = 1.0
+        self.scroll_sensitivity = 0.8
         self.last_scroll_y = 0.0
         
         # For determining play area
@@ -149,7 +149,7 @@ class ActionController():
                 self.hand_state["right"] = "pinch-pressing"
                 self.hand_press_time["right"] = current_time
                 # Immediately press mouse => click down
-                self.press_down()
+                # self.press_down()
             
             elif gesture == "grab":
                 self.hand_state["right"] = "grab-pressing"
@@ -168,6 +168,7 @@ class ActionController():
                     self.hand_state["right"] = "pinch-holding"
                     print("Pinch-hold started (right hand).")
                     # Optionally press again or do nothing
+                    self.press_down()
             else:
                 # We lost pinch => short pinch => a click
                 elapsed = current_time - self.hand_press_time["right"]
@@ -175,7 +176,9 @@ class ActionController():
                     print("Short pinch => click.")
                     self.trigger_click_event()
                     # Or if you prefer press_down + press_up, you already pressed_down above
+                    self.press_down
                     self.press_up()
+                    
                 # Return to idle
                 self.hand_state["right"] = "idle"
 
@@ -300,8 +303,11 @@ class ActionController():
         # Once we finish updating:
         self.save_config()
 
-        
-        
+    def reset_setup(self):
+        # default values
+        self.max_min_x = [260, -180] 
+        self.max_min_y = [50, 0]
+        self.max_min_z = [290,-140]
         
     def move_cursor(self, x: float, y: float, scaling_x: float, scaling_y: float):
         """
@@ -408,6 +414,7 @@ def main():
             elif user_input == "c":
                 print("Switching to Setup Mode...")
                 my_listener.set_state(2)
+                action_controller.reset_setup()
                 
             elif user_input == "x":
                 print("Exiting...")
