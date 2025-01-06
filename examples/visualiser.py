@@ -168,8 +168,7 @@ def main():
                 connection.set_tracking_mode(leap.TrackingMode.ScreenTop)
             elif key == ord("d"):
                 connection.set_tracking_mode(leap.TrackingMode.Desktop)
-            elif key == ord("f"):
-                canvas.toggle_hands_format()
+            elif key == ord("f"):                 canvas.toggle_hands_format()
 
 
 if __name__ == "__main__":
