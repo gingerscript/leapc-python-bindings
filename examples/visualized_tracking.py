@@ -9,10 +9,12 @@ import time
 import json
 import os
 import cv2
-from visualiser import Canvas
+from collections import deque
+# from visualiser import Canvas
 
 # FOR WINDOWS TODO: Add if windows
 import ctypes
+import numpy as np
 
 _TRACKING_MODES = {
     leap.TrackingMode.Desktop: "Desktop",
@@ -20,11 +22,151 @@ _TRACKING_MODES = {
     leap.TrackingMode.ScreenTop: "ScreenTop",
 }
 
+
+
+class Canvas:
+    def __init__(self):
+        self.name = "Python Gemini Visualiser"
+        self.screen_size = [500, 700]
+        # self.gesture_screen = np.zeros((self.screen_size[0], self.screen_size[1]), np.uint8)
+        self.drawn_points = deque(maxlen=100)
+        self.is_drawing = False
+        self.hands_colour = (255, 255, 255)
+        self.font_colour = (0, 255, 44)
+        self.hands_format = "Skeleton"
+        self.output_image = np.zeros((self.screen_size[0], self.screen_size[1], 3), np.uint8)
+        self.tracking_mode = None
+        self.counter = 0
+
+    def set_tracking_mode(self, tracking_mode):
+        self.tracking_mode = tracking_mode
+
+    def toggle_hands_format(self):
+        self.hands_format = "Dots" if self.hands_format == "Skeleton" else "Skeleton"
+        print(f"Set hands format to {self.hands_format}")
+
+    def get_joint_position(self, bone):
+        if bone:
+            return int(bone.x + (self.screen_size[1] / 2)), int(bone.z + (self.screen_size[0] / 2))
+        else:
+            return None
+        
+    ## Gesture Screen Drawing 
+    def begin_drawing(self):
+        self.is_drawing = True
+    
+    def stop_drawing(self):
+        self.is_drawing = False
+        
+    def clear_gesture_screen(self):
+        self.drawn_points.clear()
+        
+
+    def render_hands(self, event):
+        # Clear the previous image
+        self.output_image[:, :] = 0
+
+        cv2.putText(
+            self.output_image,
+            f"Tracking Mode: {_TRACKING_MODES[self.tracking_mode]}",
+            (10, self.screen_size[0] - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            self.font_colour,
+            1,
+        )
+
+        if len(event.hands) == 0:
+            return
+
+        for i in range(0, len(event.hands)):
+            hand = event.hands[i]
+            for index_digit in range(0, 5):
+                digit = hand.digits[index_digit]
+                for index_bone in range(0, 4):
+                    bone = digit.bones[index_bone]
+                    
+                        
+                    if self.hands_format == "Dots":
+                        prev_joint = self.get_joint_position(bone.prev_joint)
+                        next_joint = self.get_joint_position(bone.next_joint)
+                        if prev_joint:
+                            cv2.circle(self.output_image, prev_joint, 2, self.hands_colour, -1)
+
+                        if next_joint:
+                            cv2.circle(self.output_image, next_joint, 2, self.hands_colour, -1)
+                        
+                        
+                        
+
+                    if self.hands_format == "Skeleton":
+                        wrist = self.get_joint_position(hand.arm.next_joint)
+                        elbow = self.get_joint_position(hand.arm.prev_joint)
+                        
+                        if wrist:
+                            cv2.circle(self.output_image, wrist, 3, self.hands_colour, -1)
+                            for i in self.drawn_points:
+                                    # print(i)
+                                    cv2.circle(self.output_image, i, 3, self.hands_colour, -2)
+
+                        if elbow:
+                            cv2.circle(self.output_image, elbow, 3, self.hands_colour, -1)
+
+                        if wrist and elbow:
+                            cv2.line(self.output_image, wrist, elbow, self.hands_colour, 2)
+
+                        bone_start = self.get_joint_position(bone.prev_joint)
+                        bone_end = self.get_joint_position(bone.next_joint)
+
+                        if bone_start:
+                            cv2.circle(self.output_image, bone_start, 3, self.hands_colour, -1)
+
+                        if bone_end:
+                            cv2.circle(self.output_image, bone_end, 3, self.hands_colour, -1)
+
+                        if bone_start and bone_end:
+                            cv2.line(self.output_image, bone_start, bone_end, self.hands_colour, 2)
+
+                        if ((index_digit == 0) and (index_bone == 0)) or (
+                            (index_digit > 0) and (index_digit < 4) and (index_bone < 2)
+                        ):
+                            index_digit_next = index_digit + 1
+                            digit_next = hand.digits[index_digit_next]
+                            bone_next = digit_next.bones[index_bone]
+                            bone_next_start = self.get_joint_position(bone_next.prev_joint)
+                            if bone_start and bone_next_start:
+                                cv2.line(
+                                    self.output_image,
+                                    bone_start,
+                                    bone_next_start,
+                                    self.hands_colour,
+                                    2,
+                                )
+
+                        if index_bone == 0 and bone_start and wrist:
+                            cv2.line(self.output_image, bone_start, wrist, self.hands_colour, 2)
+                            # print(bone_start, bone_end)
+                            cv2.circle(self.output_image, (400,300), 3, self.hands_colour, -2)
+                            if self.is_drawing:
+                                self.counter += 1
+                                if self.counter % 25 == 0:
+                                    self.drawn_points.append(bone_start)
+                                    # print(self.is_drawing)
+                                    # print(self.drawn_points)
+                                    self.counter = 0
+                                
+                                
+                                    
+                            
+
+
+
 class ActionController():
     MOUSEEVENTF_LEFTDOWN = 0x0002  # Left button down
     MOUSEEVENTF_LEFTUP = 0x0004    # Left button up
     
-    def __init__(self):
+    def __init__(self, canvas):
+        self.canvas = canvas
         self.hand_state = {"left": "idle", "right": "idle"}
         self.hand_press_time = {"left": 0.0, "right": 0.0}
 
@@ -35,7 +177,7 @@ class ActionController():
         self.grab_threshold = 0.9
 
         # Common “short vs hold” threshold (seconds)
-        self.hold_threshold = 0.3
+        self.hold_threshold = 0.2
 
         # For “grab to scroll”
         self.scroll_sensitivity = 0.8
@@ -122,10 +264,17 @@ class ActionController():
                     pinch_strength=hand.pinch_strength,
                     palm_y=hand.palm.position.y
                 )
+                
+               
 
             elif hand_type == "left":
                 # Ignore left hand
-                pass
+                 self.update_left_hand_state(
+                    grab_strength=hand.grab_strength,
+                    pinch_strength=hand.pinch_strength,
+                    palm_y=hand.palm.position.y
+                )
+                
             
     def update_right_hand_state(self, grab_strength, pinch_strength, palm_y):
         """
@@ -224,6 +373,109 @@ class ActionController():
 
         # else: do nothing for any other unexpected states
 
+    def update_left_hand_state(self, grab_strength, pinch_strength, palm_y):
+        """
+        A single FSM for the right hand that:
+        - Pinch => short pinch click, pinch hold => click-and-hold
+        - Grab => short grab does nothing, grab hold => scroll with displacement
+        Priority: If pinch_strength > grab_strength and pinch >= pinch_threshold => pinch
+                Else if grab_strength >= grab_threshold => grab
+                Else idle
+        """
+        current_time = time.time()
+        current_state = self.hand_state["left"]
+
+        # 1) Decide which gesture (pinch or grab) is active, if any
+        pinch_active = (pinch_strength >= self.pinch_threshold)  
+        grab_active  = (grab_strength >= self.grab_threshold)
+
+        # Priority: pinch if pinch_strength > grab_strength
+        if pinch_active and (pinch_strength > grab_strength):
+            gesture = "pinch"
+        elif grab_active:
+            gesture = "grab"
+        else:
+            gesture = None
+
+        # 2) State machine transitions
+        if current_state == "idle":
+            if gesture == "pinch":
+                self.hand_state["left"] = "pinch-pressing"
+                self.hand_press_time["left"] = current_time
+                # Immediately press mouse => click down
+                # self.press_down()
+                self.canvas.begin_drawing()
+            
+            elif gesture == "grab":
+                self.hand_state["left"] = "grab-pressing"
+                self.hand_press_time["left"] = current_time
+                # We'll start “grab” => store palm_y to begin scroll
+                # self.last_scroll_y = palm_y
+                
+                print("Grab start, reset canvas.")
+
+            # else remain idle
+
+        elif current_state == "pinch-pressing":
+            if gesture == "pinch":
+                # Still pinching => check if we cross hold threshold
+                elapsed = current_time - self.hand_press_time["left"]
+                if elapsed >= self.hold_threshold:
+                    self.hand_state["left"] = "pinch-holding"
+                    print("Pinch-hold started (left hand).")
+                    # Optionally press again or do nothing
+                    # self.press_down()
+                    self.canvas.begin_drawing()
+            else:
+                # We lost pinch => short pinch => a click
+                elapsed = current_time - self.hand_press_time["left"]
+                if elapsed < self.hold_threshold:
+                    print("Short pinch => click.")
+                    self.trigger_click_event()
+                    # Or if you prefer press_down + press_up, you already pressed_down above
+                    # self.press_down
+                    # self.press_up()
+                    self.canvas.stop_drawing()
+                    
+                # Return to idle
+                self.hand_state["left"] = "idle"
+
+        elif current_state == "pinch-holding":
+            if gesture == "pinch":
+                # Still pinch-holding => do nothing, keep mouse pressed
+                pass
+            else:
+                # Pinch ended => release mouse
+                print("Pinch-hold ended.")
+                # self.press_up()
+                self.canvas.stop_drawing()
+                self.hand_state["left"] = "idle"
+
+        elif current_state == "grab-pressing":
+            if gesture == "grab":
+                # Still grabbing => see if we cross hold threshold => start scrolling
+                elapsed = current_time - self.hand_press_time["left"]
+                if elapsed >= self.hold_threshold:
+                    self.hand_state["left"] = "grab-holding"
+                    # self.last_scroll_y = palm_y
+                    self.canvas.clear_gesture_screen()
+                    print("Grab-hold Left => clear canvas.")
+            else:
+                # Lost grab => short grab => do nothing
+                print("Short Left grab => do nothing (no click).")
+                self.hand_state["left"] = "idle"
+
+        elif current_state == "grab-holding":
+            if gesture == "grab":
+                # Keep scrolling based on displacement
+                self.scroll_with_displacement(palm_y)
+            else:
+                # Grab ended => stop scrolling
+                print("Grab Left ended.")
+                self.canvas.clear_gesture_screen()
+                self.hand_state["left"] = "idle"
+
+        # else: do nothing for any other unexpected states
             
     def scroll_with_displacement(self, current_y):
         """
@@ -243,47 +495,54 @@ class ActionController():
 
         self.last_scroll_y = current_y
     
-    def update_left_grab_state(self, grab_strength):
-        """
-        Detect a short grab => click, or a long grab => hold, on the LEFT hand.
-        """
-        current_time = time.time()
+    # def update_left_hand_state(self, grab_strength, pinch_strength):
+    #     """
+    #     Detect a short grab => click, or a long grab => hold, on the LEFT hand.
+    #     """
+    #     current_time = time.time()
 
-        # Check if "grabbing"
-        if grab_strength >= self.grab_threshold:
-            if self.hand_state["left"] == "idle":
-                self.hand_state["left"] = "pressing"
-                self.hand_press_time["left"] = current_time
-                # Optionally press down the mouse here if you want immediate down:
-                self.press_down()
+    #     # Check if "grabbing"
+    #     if grab_strength >= self.grab_threshold:
+    #         if self.hand_state["left"] == "idle":
+    #             self.hand_state["left"] = "pressing"
+    #             self.hand_press_time["left"] = current_time
+    #             # Optionally press down the mouse here if you want immediate down:
+    #             # self.press_down()
+    #             self.canvas.clear_gesture_screen()
+                
 
-            elif self.hand_state["left"] == "pressing":
-                elapsed_time = current_time - self.hand_press_time["left"]
-                if elapsed_time >= self.hold_threshold:
-                    self.hand_state["left"] = "holding"
-                    print("Left hand is now GRAB-holding.")
-                    # Keep mouse pressed if desired:
-                    self.press_down()
+    #         elif self.hand_state["left"] == "pressing":
+    #             elapsed_time = current_time - self.hand_press_time["left"]
+    #             if elapsed_time >= self.hold_threshold:
+    #                 self.hand_state["left"] = "holding"
+    #                 print("Left hand is now GRAB-holding.")
+    #                 # Keep mouse pressed if desired:
+    #                 # self.press_down()
+    #                 # self.canvas.begin_drawing()
 
-            elif self.hand_state["left"] == "holding":
-                # Stay in hold until release
-                pass
+    #         elif self.hand_state["left"] == "holding":
+    #             # Stay in hold until release
+    #             pass
+    #     elif pinch_strength >= self.pinch_threshold:
+    #         print("Left hand is now Pinching")
+    #         self.canvas.begin_drawing()
+            
 
-        else:
-            # Grab release
-            if self.hand_state["left"] == "pressing":
-                elapsed_time = current_time - self.hand_press_time["left"]
-                if elapsed_time < self.hold_threshold:
-                    print("Left hand performed a short GRAB => treat as click.")
-                    self.trigger_click_event()
-                    self.press_up()
-                self.hand_state["left"] = "idle"
+    #     else:
+    #         # Grab release
+    #         if self.hand_state["left"] == "pressing":
+    #             elapsed_time = current_time - self.hand_press_time["left"]
+    #             if elapsed_time < self.hold_threshold:
+    #                 print("Left hand performed a short GRAB => treat as click.")
+    #                 self.canvas.stop_drawing()
+                    
+    #             self.hand_state["left"] = "idle"
 
-            elif self.hand_state["left"] == "holding":
-                print("Left hand ended the GRAB-hold.")
-                self.press_up()
-                self.hand_state["left"] = "idle"
-            # If idle, do nothing
+    #         elif self.hand_state["left"] == "holding":
+    #             print("Left hand ended the GRAB-hold.")
+    #             self.canvas.stop_drawing()
+    #             self.hand_state["left"] = "idle"
+    #         # If idle, do nothing
 
 
     
@@ -370,10 +629,9 @@ class ActionController():
         ctypes.windll.user32.mouse_event(ActionController.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
 class MyListener(leap.Listener):
-    def __init__(self, action_controller, canvas):
+    def __init__(self, action_controller):
         super().__init__()
         self.action_controller = action_controller
-        self.canvas = canvas
         self.state = 0  # FSM states 0: Sleep, 1: Active, 2: Setup
         
         
@@ -395,22 +653,22 @@ class MyListener(leap.Listener):
         print(f"Found device {info.serial}")
     
     def on_tracking_mode_event(self, event):
-        self.canvas.set_tracking_mode(event.current_tracking_mode)
+        self.action_controller.canvas.set_tracking_mode(event.current_tracking_mode)
         print(f"Tracking mode changed to {_TRACKING_MODES[event.current_tracking_mode]}")
 
 
     def on_tracking_event(self, event):
         # print(f"Frame {event.tracking_frame_id} with {len(event.hands)} hands.")
         self.action_controller.tracking_event_router(event, self.state)
-        self.canvas.render_hands(event)
+        self.action_controller.canvas.render_hands(event)
 
 def main():
     canvas = Canvas()
     
-    action_controller = ActionController()
+    action_controller = ActionController(canvas)
     # Load the previously saved config (if any)
     action_controller.load_config()
-    my_listener = MyListener(action_controller, canvas)
+    my_listener = MyListener(action_controller)
     
 
     connection = leap.Connection()
@@ -422,7 +680,7 @@ def main():
         connection.set_tracking_mode(leap.TrackingMode.Desktop)
         
         while running:
-            cv2.imshow(canvas.name, canvas.output_image)
+            cv2.imshow(action_controller.canvas.name, action_controller.canvas.output_image)
             
             key = cv2.waitKey(1)
             
