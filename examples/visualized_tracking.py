@@ -145,15 +145,17 @@ class Canvas:
 
                         if index_bone == 0 and bone_start and wrist:
                             cv2.line(self.output_image, bone_start, wrist, self.hands_colour, 2)
-                            # print(bone_start, bone_end)
-                            cv2.circle(self.output_image, (400,300), 3, self.hands_colour, -2)
+
+
+                        if (index_digit == 1) and (index_bone == 3):
                             if self.is_drawing:
                                 self.counter += 1
-                                if self.counter % 25 == 0:
-                                    self.drawn_points.append(bone_start)
+                                if self.counter % 2 == 0:
+                                    self.drawn_points.append(bone_end)
                                     # print(self.is_drawing)
                                     # print(self.drawn_points)
                                     self.counter = 0
+                            
                                 
                                 
                                     
@@ -266,7 +268,6 @@ class ActionController():
                 )
                 
                
-
             elif hand_type == "left":
                 # Ignore left hand
                  self.update_left_hand_state(
@@ -494,55 +495,6 @@ class ActionController():
             ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, scroll_amount, 0)
 
         self.last_scroll_y = current_y
-    
-    # def update_left_hand_state(self, grab_strength, pinch_strength):
-    #     """
-    #     Detect a short grab => click, or a long grab => hold, on the LEFT hand.
-    #     """
-    #     current_time = time.time()
-
-    #     # Check if "grabbing"
-    #     if grab_strength >= self.grab_threshold:
-    #         if self.hand_state["left"] == "idle":
-    #             self.hand_state["left"] = "pressing"
-    #             self.hand_press_time["left"] = current_time
-    #             # Optionally press down the mouse here if you want immediate down:
-    #             # self.press_down()
-    #             self.canvas.clear_gesture_screen()
-                
-
-    #         elif self.hand_state["left"] == "pressing":
-    #             elapsed_time = current_time - self.hand_press_time["left"]
-    #             if elapsed_time >= self.hold_threshold:
-    #                 self.hand_state["left"] = "holding"
-    #                 print("Left hand is now GRAB-holding.")
-    #                 # Keep mouse pressed if desired:
-    #                 # self.press_down()
-    #                 # self.canvas.begin_drawing()
-
-    #         elif self.hand_state["left"] == "holding":
-    #             # Stay in hold until release
-    #             pass
-    #     elif pinch_strength >= self.pinch_threshold:
-    #         print("Left hand is now Pinching")
-    #         self.canvas.begin_drawing()
-            
-
-    #     else:
-    #         # Grab release
-    #         if self.hand_state["left"] == "pressing":
-    #             elapsed_time = current_time - self.hand_press_time["left"]
-    #             if elapsed_time < self.hold_threshold:
-    #                 print("Left hand performed a short GRAB => treat as click.")
-    #                 self.canvas.stop_drawing()
-                    
-    #             self.hand_state["left"] = "idle"
-
-    #         elif self.hand_state["left"] == "holding":
-    #             print("Left hand ended the GRAB-hold.")
-    #             self.canvas.stop_drawing()
-    #             self.hand_state["left"] = "idle"
-    #         # If idle, do nothing
 
 
     
