@@ -3,6 +3,7 @@
 from .cstruct import LeapCStruct
 from .enums import HandType
 from leapc_cffi import ffi
+from math import sqrt
 
 
 class FrameData:
@@ -49,6 +50,22 @@ class Vector(LeapCStruct):
 
     def __iter__(self):
         return [self._data.v[i] for i in range(3)].__iter__()
+    
+    def __sub__(self, other):
+        """Subtracts two Vector objects and returns a new Vector."""
+        if not isinstance(other, Vector):
+            raise TypeError("Subtraction is only supported between two Vector objects")
+
+        # Create a new Vector object with the difference of x, y, z components
+        result = Vector()
+        result._data.x = self._data.x - other._data.x
+        result._data.y = self._data.y - other._data.y
+        result._data.z = self._data.z - other._data.z
+
+        return result
+    
+    def magnitude(self):
+        return sqrt(self._data.x ** 2 + self._data.x ** 2 + self._data.y ** 2)
 
     @property
     def x(self):
@@ -163,7 +180,11 @@ class Digit(LeapCStruct):
     @property
     def is_extended(self):
         return self._data.is_extended
-
+    
+    @property
+    def length(self):
+        # Length is defined as the distance between the base of the digit to the tip of the finger
+        return (self._data.distal.next_joint - self._data.metacarpal.prev_joint).magnitude()
 
 class Hand(LeapCStruct):
     @property
