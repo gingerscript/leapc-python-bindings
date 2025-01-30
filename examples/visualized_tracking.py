@@ -5,6 +5,9 @@ server and a device being plugged in also generate logs.
 """
 
 import leap
+# print("Imported leap from:", leap.__file__, "\n")
+# print(dir(leap.datatypes.Digit))
+# print("leap.datatypes module file:", leap.datatypes.__file__)
 import time
 import json
 import os
@@ -254,6 +257,11 @@ class ActionController():
     def active_handler(self, event):
          for hand in event.hands:
             hand_type = "left" if str(hand.type) == "HandType.Left" else "right"
+            
+            print(hand.digits[2].length, hand.digits[3].length)
+            # digit_lengths = [digit.length for digit in hand.digits]
+            
+            # print(digit_lengths)
             
             if hand_type == "right":
                 # Move cursor

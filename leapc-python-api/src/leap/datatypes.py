@@ -5,6 +5,8 @@ from .enums import HandType
 from leapc_cffi import ffi
 from math import sqrt
 
+print("DEBUG: This is the actual leap.datatypes being imported:", __file__)
+
 
 class FrameData:
     """Wrapper which owns all the data required to read the Frame
@@ -45,6 +47,14 @@ class FrameHeader(LeapCStruct):
 
 
 class Vector(LeapCStruct):
+    def __init__(self, data=None):
+        # If no data is given, allocate a brand new LEAP_VECTOR
+        if data is None:
+            data = ffi.new("LEAP_VECTOR*")  # a pointer to an empty LEAP_VECTOR
+            data = data[0]                 # get the struct itself
+        super().__init__(data)
+
+    
     def __getitem__(self, idx):
         return self._data.v[idx]
 
@@ -65,7 +75,7 @@ class Vector(LeapCStruct):
         return result
     
     def magnitude(self):
-        return sqrt(self._data.x ** 2 + self._data.x ** 2 + self._data.y ** 2)
+        return float(sqrt(self._data.x ** 2 + self._data.y ** 2 + self._data.z ** 2))
 
     @property
     def x(self):
@@ -176,15 +186,20 @@ class Digit(LeapCStruct):
     @property
     def distal(self):
         return Bone(self._data.distal)
+    
+    @property
+    def length(self):
+        # Use self.distal.next_joint, not self._data.distal.next_joint
+        distal_next = self.distal.next_joint       # => a Vector
+        metacarpal_prev = self.metacarpal.prev_joint  # => another Vector
+        return (distal_next - metacarpal_prev).magnitude()
 
     @property
     def is_extended(self):
         return self._data.is_extended
     
-    @property
-    def length(self):
-        # Length is defined as the distance between the base of the digit to the tip of the finger
-        return (self._data.distal.next_joint - self._data.metacarpal.prev_joint).magnitude()
+    
+    
 
 class Hand(LeapCStruct):
     @property
