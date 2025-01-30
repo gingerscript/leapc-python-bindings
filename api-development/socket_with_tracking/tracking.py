@@ -27,33 +27,36 @@ class MyListener(leap.Listener):
     def on_tracking_event(self, event):
         # If there's at least one hand, pick the first
         if event.hands:
-            hand = event.hands[0]
-            # Let's pick the palm x for demonstration
-            palm_x = hand.palm.position.x
-            palm_y = hand.palm.position.y
-            palm_z = hand.palm.position.z
-            # Or do your own logic to get the "number" you want
-            # e.g. maybe round it
-            x_pos = int(round(palm_x))
-            y_pos = int(round(palm_y))
-            z_pos = int(round(palm_z))
-            # Write that to the file
-            data = {
-                    "hand_position": {
-                        "x" : x_pos,
-                        "y" : y_pos,
-                        "z" : z_pos
-                        },
-                     "chirality": int(hand.type.value)
-                    }
-            try:
-                with open(BUFFER_FILE, "w") as f:
-                    json.dump(data, f)
-            except IOError as e:
-                print(f"Error writing to {BUFFER_FILE}: {e}")
+            for hand in event.hands:
+            # hand = event.hands[0]
+                # Let's pick the palm x for demonstration
+                gesture = "N/A"
+                palm_x = hand.palm.position.x
+                palm_y = hand.palm.position.y
+                palm_z = hand.palm.position.z
+                # Or do your own logic to get the "number" you want
+                # e.g. maybe round it
+                x_pos = int(round(palm_x))
+                y_pos = int(round(palm_y))
+                z_pos = int(round(palm_z))
+                # Write that to the file
+                data = {
+                        "hand_position" : {
+                            "x" : x_pos,
+                            "y" : y_pos,
+                            "z" : z_pos
+                            },
+                        "chirality" : int(hand.type.value),
+                        "gesture" : gesture
+                        }
+                try:
+                    with open(BUFFER_FILE, "w") as f:
+                        json.dump(data, f)
+                except IOError as e:
+                    print(f"Error writing to {BUFFER_FILE}: {e}")
 
-            # Optionally print
-            print("Palm X =", palm_x, " => storing", x_pos)
+                # Optionally print
+                # print("Palm X =", palm_x, " => storing", x_pos)
 
 def main():
     my_listener = MyListener()
