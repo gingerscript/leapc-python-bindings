@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Number Stream</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Live Data Stream</h1>
+    <p>Number: <span id="number">Waiting...</span></p>
+
+    <script>
+        var socket = io("http://localhost:5000");
+
+        socket.on("number_update", function(data) {
+            document.getElementById("number").innerText = data.number;
+        });
+
+        socket.on("connect", function() {
+            console.log("Connected to WebSocket server");
+        });
+
+        socket.on("disconnect", function() {
+            console.log("Disconnected from WebSocket server");
+        });
+    </script>
+    
+</body>
+</html>
