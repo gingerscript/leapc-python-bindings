@@ -22,11 +22,9 @@ def index():
 def watch_buffer_and_emit():
     """
     Background task that polls the JSON buffer for changes
-    and emits the updated position via Socket.IO.
+    and emits the full hand object via Socket.IO.
     """
-    last_x_value = None
-    last_y_value = None
-    last_z_value = None
+    last_data = None  # Track the last sent JSON data
 
     while True:
         try:
@@ -35,34 +33,24 @@ def watch_buffer_and_emit():
         except (FileNotFoundError, json.JSONDecodeError):
             data = {
                 "hand_position": {
-                    "x": last_x_value,
-                    "y": last_y_value,
-                    "z": last_z_value
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "chirality": 0
             }
 
-        # Ensure hand_position is always a dictionary
-        hand_position = data.get("hand_position", {})
-        if not isinstance(hand_position, dict):
-            hand_position = {"x": 0.0, "y": 0.0, "z": 0.0}
+        # Ensure `hand_position` exists and is a dictionary
+        if not isinstance(data.get("hand_position", {}), dict):
+            data["hand_position"] = {"x": 0.0, "y": 0.0, "z": 0.0}
 
-        # Extract values with last known values as default
-        x_value = hand_position.get("x", last_x_value)
-        y_value = hand_position.get("y", last_y_value)
-        z_value = hand_position.get("z", last_z_value)
+        # Only emit if data has changed
+        if data != last_data:
+            last_data = data
+            socketio.emit("hand_update", data)  # Emit full object
 
-        # If any value has changed, emit an update
-        if (x_value != last_x_value) or (y_value != last_y_value) or (z_value != last_z_value):
-            last_x_value, last_y_value, last_z_value = x_value, y_value, z_value
+        time.sleep(0.05)  # Poll every 50ms
 
-            socketio.emit("number_update", {
-                "x": x_value,
-                "y": y_value,
-                "z": z_value
-            })
-
-        time.sleep(0.05)  # Check every 50ms
 
 
 @socketio.on("connect")

@@ -29,6 +29,7 @@
         <p>X: <span id="x_pos">Waiting...</span></p>
         <p>Y: <span id="y_pos">Waiting...</span></p>
         <p>Z: <span id="z_pos">Waiting...</span></p>
+        <p>Chirality: <span id="chirality">Waiting...</span></p>
     </div>
 
     <div id="ball"></div>
@@ -37,18 +38,23 @@
         var socket = io("http://localhost:5000");
         var ball = document.getElementById("ball");
 
-        socket.on("number_update", function(data) {
-            // Update text positions
-            document.getElementById("x_pos").innerText = data.x;
-            document.getElementById("y_pos").innerText = data.y;
-            document.getElementById("z_pos").innerText = data.z;
+        socket.on("hand_update", function(data) {
+            // Extract hand position
+            let handPos = data.hand_position || { x: 0.0, y: 0.0, z: 0.0 };
+            let chirality = data.chirality;
+
+            // Update text values
+            document.getElementById("x_pos").innerText = handPos.x.toFixed(2);
+            document.getElementById("y_pos").innerText = handPos.y.toFixed(2);
+            document.getElementById("z_pos").innerText = handPos.z.toFixed(2);
+            document.getElementById("chirality").innerText = chirality === 0 ? "Left" : "Right";
 
             // Normalize X and Y values to screen size
             let screenWidth = window.innerWidth;
             let screenHeight = window.innerHeight;
 
-            let x = (data.x ) / 600 * screenWidth; // Scale to fit width
-            let y = (-data.y + 400) / 600 * screenHeight; // Scale to fit height
+            let x = (handPos.x) / 600 * screenWidth; // Adjust range to fit width
+            let y = (-handPos.y + 350) / 600 * screenHeight; // Flip y-axis to match screen
 
             // Move the ball smoothly
             ball.style.transform = `translate(${x}px, ${y}px)`;
