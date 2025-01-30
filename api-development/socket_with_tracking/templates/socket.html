@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Hand Tracking</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        
+        #ball {
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.05s linear; /* Smooth movement */
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Hand Tracking</h1>
+    <div>
+        <h2>Hand Position:</h2>
+        <p>X: <span id="x_pos">Waiting...</span></p>
+        <p>Y: <span id="y_pos">Waiting...</span></p>
+        <p>Z: <span id="z_pos">Waiting...</span></p>
+    </div>
+
+    <div id="ball"></div>
+
+    <script>
+        var socket = io("http://localhost:5000");
+        var ball = document.getElementById("ball");
+
+        socket.on("number_update", function(data) {
+            // Update text positions
+            document.getElementById("x_pos").innerText = data.x;
+            document.getElementById("y_pos").innerText = data.y;
+            document.getElementById("z_pos").innerText = data.z;
+
+            // Normalize X and Y values to screen size
+            let screenWidth = window.innerWidth;
+            let screenHeight = window.innerHeight;
+
+            let x = (data.x ) / 600 * screenWidth; // Scale to fit width
+            let y = (-data.y + 400) / 600 * screenHeight; // Scale to fit height
+
+            // Move the ball smoothly
+            ball.style.transform = `translate(${x}px, ${y}px)`;
+        });
+
+        socket.on("connect", function() {
+            console.log("Connected to WebSocket server");
+        });
+
+        socket.on("disconnect", function() {
+            console.log("Disconnected from WebSocket server");
+        });
+    </script>
+</body>
+</html>
