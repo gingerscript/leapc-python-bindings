@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Hand Tracking</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        
+        #ball {
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.05s linear; /* Smooth movement */
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Hand Tracking</h1>
+    <div>
+        <h2>Hand Position:</h2>
+        <p>X: <span id="x_pos">Waiting...</span></p>
+        <p>Y: <span id="y_pos">Waiting...</span></p>
+        <p>Z: <span id="z_pos">Waiting...</span></p>
+        <p>Chirality: <span id="chirality">Waiting...</span></p>
+    </div>
+
+    <div id="ball"></div>
+
+    <script>
+        var socket = io("http://localhost:5000");
+        var ball = document.getElementById("ball");
+
+        socket.on("hand_update", function(data) {
+            // Extract hand position
+            let handPos = data.hand_position || { x: 0.0, y: 0.0, z: 0.0 };
+            let chirality = data.chirality;
+
+            // Update text values
+            document.getElementById("x_pos").innerText = handPos.x.toFixed(2);
+            document.getElementById("y_pos").innerText = handPos.y.toFixed(2);
+            document.getElementById("z_pos").innerText = handPos.z.toFixed(2);
+            document.getElementById("chirality").innerText = chirality === 0 ? "Left" : "Right";
+
+            // Normalize X and Y values to screen size
+            let screenWidth = window.innerWidth;
+            let screenHeight = window.innerHeight;
+
+            let x = (handPos.x) / 600 * screenWidth; // Adjust range to fit width
+            let y = (-handPos.y + 350) / 600 * screenHeight; // Flip y-axis to match screen
+
+            // Move the ball smoothly
+            ball.style.transform = `translate(${x}px, ${y}px)`;
+        });
+
+        socket.on("connect", function() {
+            console.log("Connected to WebSocket server");
+        });
+
+        socket.on("disconnect", function() {
+            console.log("Disconnected from WebSocket server");
+        });
+    </script>
+</body>
+</html>

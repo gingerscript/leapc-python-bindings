@@ -3,6 +3,9 @@
 from .cstruct import LeapCStruct
 from .enums import HandType
 from leapc_cffi import ffi
+from math import sqrt
+
+print("DEBUG: This is the actual leap.datatypes being imported:", __file__)
 
 
 class FrameData:
@@ -44,11 +47,35 @@ class FrameHeader(LeapCStruct):
 
 
 class Vector(LeapCStruct):
+    def __init__(self, data=None):
+        # If no data is given, allocate a brand new LEAP_VECTOR
+        if data is None:
+            data = ffi.new("LEAP_VECTOR*")  # a pointer to an empty LEAP_VECTOR
+            data = data[0]                 # get the struct itself
+        super().__init__(data)
+
+    
     def __getitem__(self, idx):
         return self._data.v[idx]
 
     def __iter__(self):
         return [self._data.v[i] for i in range(3)].__iter__()
+    
+    def __sub__(self, other):
+        """Subtracts two Vector objects and returns a new Vector."""
+        if not isinstance(other, Vector):
+            raise TypeError("Subtraction is only supported between two Vector objects")
+
+        # Create a new Vector object with the difference of x, y, z components
+        result = Vector()
+        result._data.x = self._data.x - other._data.x
+        result._data.y = self._data.y - other._data.y
+        result._data.z = self._data.z - other._data.z
+
+        return result
+    
+    def magnitude(self):
+        return float(sqrt(self._data.x ** 2 + self._data.y ** 2 + self._data.z ** 2))
 
     @property
     def x(self):
@@ -159,11 +186,20 @@ class Digit(LeapCStruct):
     @property
     def distal(self):
         return Bone(self._data.distal)
+    
+    @property
+    def length(self):
+        # Use self.distal.next_joint, not self._data.distal.next_joint
+        distal_next = self.distal.next_joint       # => a Vector
+        metacarpal_prev = self.metacarpal.prev_joint  # => another Vector
+        return (distal_next - metacarpal_prev).magnitude()
 
     @property
     def is_extended(self):
         return self._data.is_extended
-
+    
+    
+    
 
 class Hand(LeapCStruct):
     @property
