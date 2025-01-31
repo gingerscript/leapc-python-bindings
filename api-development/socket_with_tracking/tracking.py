@@ -48,8 +48,9 @@ class MyListener(leap.Listener):
                             },
                         "chirality" : int(hand.type.value),
                         "gesture" : gesture,
-                        "timestamp": time.time()
+                        "timestamp": time.time_ns()
                         }
+                
                 try:
                     with open(BUFFER_FILE, "w") as f:
                         json.dump(data, f)
@@ -57,7 +58,7 @@ class MyListener(leap.Listener):
                     print(f"Error writing to {BUFFER_FILE}: {e}")
 
                 # Optionally print
-                print("Palm X =", palm_x, " => storing", x_pos)
+                # print("Palm X =", palm_x, " => storing", x_pos)
 
 def main():
     my_listener = MyListener()

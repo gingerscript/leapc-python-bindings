@@ -23,7 +23,7 @@ def watch_buffer_and_emit():
     last_x, last_y, last_z = None, None, None
     last_chirality = None
     last_gesture = None
-    last_time = None
+    last_time = 0
 
     while True:
         try:
@@ -39,7 +39,7 @@ def watch_buffer_and_emit():
                 },
                 "chirality": last_chirality if last_chirality is not None else 0,
                 "gesture": last_gesture if last_gesture is not None else "N/A",
-                "timestamp": "N/A"
+                "timestamp": 0.0
             }
 
         # Ensure `hand_position` is a dictionary
@@ -52,8 +52,8 @@ def watch_buffer_and_emit():
         z_value = hand_position.get("z", last_z if last_z is not None else 0.0)
         chirality_value = data.get("chirality", last_chirality if last_chirality is not None else 0)
         gesture_value = data.get("gesture", last_gesture if last_gesture is not None else "N/A")
-        curr_time = data.get("timestamp", last_time)
-
+        curr_time = data.get("timestamp", 0.0)
+       
         # Only emit if data has changed
         if (x_value != last_x or y_value != last_y or z_value != last_z or
             chirality_value != last_chirality or gesture_value != last_gesture):

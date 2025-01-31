@@ -45,7 +45,9 @@
             let handPos = data.hand_position || { x: 0.0, y: 0.0, z: 0.0 };
             let chirality = data.chirality;
             let gesture = data.gesture;
-            let time = data.time;
+            let curr_time = data.timestamp;
+
+            console.log("curr_time:", curr_time, "Type:", typeof curr_time);
 
             // Update text values
             document.getElementById("x_pos").innerText = handPos.x.toFixed(2);
@@ -53,7 +55,8 @@
             document.getElementById("z_pos").innerText = handPos.z.toFixed(2);
             document.getElementById("chirality").innerText = chirality === 0 ? "Left" : "Right";
             document.getElementById("gesture").innerText = gesture;
-            document.getElementById("timestamp").innerText = text.toFixed(2);
+            document.getElementById("timestamp").innerText = (curr_time/1000000000).toFixed(4);
+
 
             // Normalize X and Y values to screen size
             let screenWidth = window.innerWidth;
