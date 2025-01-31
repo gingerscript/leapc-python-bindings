@@ -31,6 +31,7 @@
         <p>Z: <span id="z_pos">Waiting...</span></p>
         <p>Chirality: <span id="chirality">Waiting...</span></p>
         <p>Gesture: <span id="gesture">Waiting...</span></p>
+        <p>Timestamp: <span id="timestamp">Waiting...</span></p>
     </div>
 
     <div id="ball"></div>
@@ -44,6 +45,7 @@
             let handPos = data.hand_position || { x: 0.0, y: 0.0, z: 0.0 };
             let chirality = data.chirality;
             let gesture = data.gesture;
+            let time = data.time;
 
             // Update text values
             document.getElementById("x_pos").innerText = handPos.x.toFixed(2);
@@ -51,6 +53,7 @@
             document.getElementById("z_pos").innerText = handPos.z.toFixed(2);
             document.getElementById("chirality").innerText = chirality === 0 ? "Left" : "Right";
             document.getElementById("gesture").innerText = gesture;
+            document.getElementById("timestamp").innerText = text.toFixed(2);
 
             // Normalize X and Y values to screen size
             let screenWidth = window.innerWidth;

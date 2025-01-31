@@ -47,7 +47,8 @@ class MyListener(leap.Listener):
                             "z" : z_pos
                             },
                         "chirality" : int(hand.type.value),
-                        "gesture" : gesture
+                        "gesture" : gesture,
+                        "timestamp": time.time()
                         }
                 try:
                     with open(BUFFER_FILE, "w") as f:
@@ -56,7 +57,7 @@ class MyListener(leap.Listener):
                     print(f"Error writing to {BUFFER_FILE}: {e}")
 
                 # Optionally print
-                # print("Palm X =", palm_x, " => storing", x_pos)
+                print("Palm X =", palm_x, " => storing", x_pos)
 
 def main():
     my_listener = MyListener()

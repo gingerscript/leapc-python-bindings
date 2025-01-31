@@ -23,6 +23,7 @@ def watch_buffer_and_emit():
     last_x, last_y, last_z = None, None, None
     last_chirality = None
     last_gesture = None
+    last_time = None
 
     while True:
         try:
@@ -37,7 +38,8 @@ def watch_buffer_and_emit():
                     "z": last_z if last_z is not None else 0.0
                 },
                 "chirality": last_chirality if last_chirality is not None else 0,
-                "gesture": last_gesture if last_gesture is not None else "N/A"
+                "gesture": last_gesture if last_gesture is not None else "N/A",
+                "timestamp": "N/A"
             }
 
         # Ensure `hand_position` is a dictionary
@@ -50,6 +52,7 @@ def watch_buffer_and_emit():
         z_value = hand_position.get("z", last_z if last_z is not None else 0.0)
         chirality_value = data.get("chirality", last_chirality if last_chirality is not None else 0)
         gesture_value = data.get("gesture", last_gesture if last_gesture is not None else "N/A")
+        curr_time = data.get("timestamp", last_time)
 
         # Only emit if data has changed
         if (x_value != last_x or y_value != last_y or z_value != last_z or
@@ -59,6 +62,7 @@ def watch_buffer_and_emit():
             last_x, last_y, last_z = x_value, y_value, z_value
             last_chirality = chirality_value
             last_gesture = gesture_value
+            last_time = curr_time
 
             # Emit full hand object
             socketio.emit("hand_update", {
@@ -68,7 +72,8 @@ def watch_buffer_and_emit():
                     "z": z_value
                 },
                 "chirality": chirality_value,
-                "gesture": gesture_value
+                "gesture": gesture_value,
+                "timestamp": curr_time
             })
 
         time.sleep(0.01)  # Poll every 50ms
