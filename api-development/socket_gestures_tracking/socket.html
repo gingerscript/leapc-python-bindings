@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Hand Tracking</title>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            margin: 0; padding: 0;
+        }
+        .container {
+            margin: 20px auto;
+            width: 80%;
+            max-width: 600px;
+        }
+        .hand-display {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+
+        /* Two “balls” for left and right hand */
+        .ball {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: translate(-50%, -50%);
+            transition: transform 0.05s linear; /* Smooth movement */
+        }
+        #ball_left {
+            background-color: blue;
+        }
+        #ball_right {
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Hand Tracking</h1>
+
+    <div class="container">
+        <!-- Left Hand Display -->
+        <div class="hand-display">
+            <h2>Left Hand</h2>
+            <p>X: <span id="left_x">0</span></p>
+            <p>Y: <span id="left_y">0</span></p>
+            <p>Z: <span id="left_z">0</span></p>
+            <p>Gesture: <span id="left_gesture">N/A</span></p>
+            <p>Timestamp: <span id="left_timestamp">N/A</span></p>
+        </div>
+
+        <!-- Right Hand Display -->
+        <div class="hand-display">
+            <h2>Right Hand</h2>
+            <p>X: <span id="right_x">0</span></p>
+            <p>Y: <span id="right_y">0</span></p>
+            <p>Z: <span id="right_z">0</span></p>
+            <p>Gesture: <span id="right_gesture">N/A</span></p>
+            <p>Timestamp: <span id="right_timestamp">N/A</span></p>
+        </div>
+
+        <!-- Complex Gesture Display -->
+        <div class="hand-display">
+            <h2>Complex Gesture</h2>
+            <p>Gesture: <span id="complex_gesture">N/A</span></p>
+            <p>Timestamp: <span id="complex_timestamp">N/A</span></p>
+        </div>
+    </div>
+
+    <!-- "Balls" to visualize left and right hand positions -->
+    <div id="ball_left" class="ball"></div>
+    <div id="ball_right" class="ball"></div>
+
+    <script>
+        const socket = io("http://localhost:5000");
+
+        // HTML elements for Left Hand
+        const leftXEl = document.getElementById("left_x");
+        const leftYEl = document.getElementById("left_y");
+        const leftZEl = document.getElementById("left_z");
+        const leftGestureEl = document.getElementById("left_gesture");
+        const leftTimestampEl = document.getElementById("left_timestamp");
+
+        // HTML elements for Right Hand
+        const rightXEl = document.getElementById("right_x");
+        const rightYEl = document.getElementById("right_y");
+        const rightZEl = document.getElementById("right_z");
+        const rightGestureEl = document.getElementById("right_gesture");
+        const rightTimestampEl = document.getElementById("right_timestamp");
+
+        // HTML elements for Complex Gesture
+        const complexGestureEl = document.getElementById("complex_gesture");
+        const complexTimestampEl = document.getElementById("complex_timestamp");
+
+        // The two balls for left/right
+        const ballLeft  = document.getElementById("ball_left");
+        const ballRight = document.getElementById("ball_right");
+
+        socket.on("connect", function() {
+            console.log("[socket.io] Connected to server!");
+        });
+
+        socket.on("disconnect", function() {
+            console.log("[socket.io] Disconnected from server.");
+        });
+
+        socket.on("hand_update", function(data) {
+            // data => { left_hand: {...}, right_hand: {...}, complex_gesture: {...} }
+
+            /*** LEFT HAND ***/
+            const leftHand = data.left_hand || {};
+            const leftPos = leftHand.position || {x:0,y:0,z:0};
+
+            leftXEl.textContent = leftPos.x.toFixed(2);
+            leftYEl.textContent = leftPos.y.toFixed(2);
+            leftZEl.textContent = leftPos.z.toFixed(2);
+            leftGestureEl.textContent = leftHand.gesture || "N/A";
+            // Convert nanosecond timestamp to seconds
+            leftTimestampEl.textContent = leftHand.timestamp
+                ? (leftHand.timestamp / 1e9).toFixed(3)
+                : "N/A";
+
+            /*** RIGHT HAND ***/
+            const rightHand = data.right_hand || {};
+            const rightPos = rightHand.position || {x:0,y:0,z:0};
+
+            rightXEl.textContent = rightPos.x.toFixed(2);
+            rightYEl.textContent = rightPos.y.toFixed(2);
+            rightZEl.textContent = rightPos.z.toFixed(2);
+            rightGestureEl.textContent = rightHand.gesture || "N/A";
+            rightTimestampEl.textContent = rightHand.timestamp
+                ? (rightHand.timestamp / 1e9).toFixed(3)
+                : "N/A";
+
+            /*** COMPLEX GESTURE ***/
+            const complex = data.complex_gesture || {};
+            complexGestureEl.textContent = complex.gesture || "N/A";
+            complexTimestampEl.textContent = complex.gesture_timestamp
+                ? (complex.gesture_timestamp / 1e9).toFixed(3)
+                : "N/A";
+
+            /*** Move the “ball_left” based on the left hand ***/
+            // Basic range mapping. Modify as needed.
+            let screenWidth  = window.innerWidth;
+            let screenHeight = window.innerHeight;
+
+            let mappedLeftX = (leftPos.x + 300) / 600 * screenWidth;
+            let mappedLeftY = (300 - leftPos.y) / 600 * screenHeight;
+
+            ballLeft.style.transform = `translate(${mappedLeftX}px, ${mappedLeftY}px)`;
+
+            /*** Move the “ball_right” based on the right hand ***/
+            let mappedRightX = (rightPos.x + 300) / 600 * screenWidth;
+            let mappedRightY = (300 - rightPos.y) / 600 * screenHeight;
+
+            ballRight.style.transform = `translate(${mappedRightX}px, ${mappedRightY}px)`;
+        });
+    </script>
+</body>
+</html>

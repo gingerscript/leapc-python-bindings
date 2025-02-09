@@ -1,0 +1,24 @@
+{
+  "left_hand": {
+    "position": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "gesture": "N/A",
+    "timestamp": 0
+  },
+  "right_hand": {
+    "position": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "gesture": "N/A",
+    "timestamp": 0
+  },
+  "complex_gesture": {
+    "gesture": "N/A",
+    "gesture_timestamp": 0
+  }
+}
