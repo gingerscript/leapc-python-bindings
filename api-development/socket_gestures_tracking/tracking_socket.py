@@ -19,6 +19,7 @@ class MyListener(leap.Listener):
         super().__init__()
         self.action_controller = action_controller
         self.state = 0  # 0 => Sleep, 1 => Active, 2 => Setup
+        self.init_counter = 0
 
         # Socket.IO client
         self.sio = socketio.Client()
@@ -65,7 +66,11 @@ class MyListener(leap.Listener):
         data_to_send = self._build_data_dict()
 
         # Step 4: Emit to server (no local file writes)
-        self._emit_data(data_to_send)
+        if self.init_counter < 4: # emit every 4 frames to prevent IO bottleneck
+            self.init_counter += 1
+        else:
+            self.init_counter = 0
+            self._emit_data(data_to_send)
 
     def _emit_data(self, data):
         """Emit data to Socket.IO if connected."""
