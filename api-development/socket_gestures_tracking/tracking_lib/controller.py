@@ -9,8 +9,6 @@ class HandTrackerBuffer:
     def __init__(self, maxlen=10):
         # We’ll keep up to 10 frames of data
         self.data_buffer = deque(maxlen=maxlen)
-        self.curr_acceleration = 0.0
-        self.curr_velocity = 0.0        
     
     def append(self, event):
         """
@@ -83,77 +81,10 @@ class HandTrackerBuffer:
         return (total_vx/valid_pairs, total_vy/valid_pairs, total_vz/valid_pairs)
 
 
-    def calculate_acceleration(self, hand_type='left'):
-        """
-        Estimate acceleration based on consecutive velocity calculations.
-        Return (ax, ay, az).
-        """
-        if len(self.data_buffer) < 3:
-            return (0.0, 0.0, 0.0)
-
-        # We'll calculate velocity at each frame pair, then take the difference
-        velocities = []
-        for i in range(len(self.data_buffer) - 1):
-            current = self.data_buffer[i]
-            nxt     = self.data_buffer[i + 1]
-
-            if current[hand_type] is None or nxt[hand_type] is None:
-                velocities.append(None)
-                continue
-
-            (cx, cy, cz) = current[hand_type]
-            (nx, ny, nz) = nxt[hand_type]
-
-            dt = nxt["timestamp"] - current["timestamp"]
-            if dt <= 0:
-                velocities.append(None)
-                continue
-
-            vx = (nx - cx) / dt
-            vy = (ny - cy) / dt
-            vz = (nz - cz) / dt
-            velocities.append((vx, vy, vz, current["timestamp"], nxt["timestamp"]))
-
-        # Now compute average acceleration from the velocity list
-        total_ax = 0.0
-        total_ay = 0.0
-        total_az = 0.0
-        valid_accel_count = 0
-
-        for i in range(len(velocities) - 1):
-            v1 = velocities[i]
-            v2 = velocities[i + 1]
-            if v1 is None or v2 is None:
-                continue
-
-            vx1, vy1, vz1, t1_start, t1_end = v1
-            vx2, vy2, vz2, t2_start, t2_end = v2
-
-            # We'll use the midpoint times to approximate dt
-            dt = (t2_end + t2_start)/2.0 - (t1_end + t1_start)/2.0
-            if dt <= 0:
-                continue
-
-            ax = (vx2 - vx1) / dt
-            ay = (vy2 - vy1) / dt
-            az = (vz2 - vz1) / dt
-
-            total_ax += ax
-            total_ay += ay
-            total_az += az
-            valid_accel_count += 1
-
-        if valid_accel_count == 0:
-            return (0.0, 0.0, 0.0)
-
-        return (total_ax / valid_accel_count,
-                total_ay / valid_accel_count,
-                total_az / valid_accel_count)
-
-
 class ActionController:
     MOUSEEVENTF_LEFTDOWN = 0x0002
     MOUSEEVENTF_LEFTUP   = 0x0004
+    SWIPE_THRESHOLD = 1000
 
     def __init__(self, canvas, enable_control=False):
         """
@@ -165,9 +96,12 @@ class ActionController:
         self.enable_control = enable_control
 
         self.hand_state = {"left": "idle", "right": "idle"}
+        self.complex_state = "idle"
         self.hand_press_time = {"left": 0.0, "right": 0.0}
         
         self.hand_buffer = HandTrackerBuffer(maxlen=10)
+        self.right_hand_velocity = (0.0, 0.0, 0.0)
+        self.left_hand_velocity = (0.0, 0.0, 0.0)
         
         # Pinch/Grab thresholds
         self.pinch_threshold = 0.8
@@ -249,10 +183,9 @@ class ActionController:
     def active_handler(self, event):
         """Process gestures and optionally move mouse, etc."""
         self.hand_buffer.append(event)
-        (vx, vy, vz) = self.hand_buffer.calculate_velocity('right')
-        (ax, ay, az) = self.hand_buffer.calculate_acceleration('right')
-        # print(f"Velocity: {int(vx/10)}, {int(vy/10)}, {int(vz/10)}")
-        print(f"Acceleration: {int(ax/10)}, {int(ay/10)}, {int(az/10)}")
+        
+        self.right_hand_velocity = self.hand_buffer.calculate_velocity('right')
+        self.left_hand_velocity = self.hand_buffer.calculate_velocity('left')
         
         for hand in event.hands:
             hand_type = "left" if hand.type.value == 0 else "right"
@@ -308,7 +241,18 @@ class ActionController:
 
         elif current_state == "pinch-holding":
             if gesture == "pinch":
-                pass  # still pinching => continue hold
+                if self.right_hand_velocity[1] > self.SWIPE_THRESHOLD: 
+                    print("[Right] Pinch-hold => swipe-up.")
+                    self.complex_state = "swipe-up"
+                    # self.scroll_with_displacement(palm_y)
+                elif self.right_hand_velocity[1] < -self.SWIPE_THRESHOLD: 
+                    print("[Right] Pinch-hold => swipe-down.")
+                    self.complex_state = "swipe-down"
+                
+                else:  
+                    self.complex_state = "idle"
+                
+                # pass  # still pinching => continue hold
             else:
                 print("[Right] Pinch-hold ended.")
                 self.press_up()
