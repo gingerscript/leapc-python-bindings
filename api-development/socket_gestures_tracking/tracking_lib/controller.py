@@ -86,7 +86,7 @@ class HandTrackerBuffer:
 class ActionController:
     MOUSEEVENTF_LEFTDOWN = 0x0002
     MOUSEEVENTF_LEFTUP   = 0x0004
-    SWIPE_THRESHOLD = 1000
+    SWIPE_THRESHOLD = 800
 
     def __init__(self, canvas, enable_control=False):
         """
@@ -106,7 +106,7 @@ class ActionController:
         
         self.hand_buffer = HandTrackerBuffer(maxlen=10)
         self.right_hand_velocity = (0.0, 0.0, 0.0)
-        self.left_hand_velocity = (0.0, 0.0, 0.0)
+        self.left_hand_velocity  = (0.0, 0.0, 0.0)
         
         # Pinch/Grab thresholds
         self.pinch_threshold = 0.8
@@ -158,7 +158,7 @@ class ActionController:
         left_timestamp = None
         right_timestamp = None
 
-        # If we have any frames in the buffer, use the most recent frame for position data
+        # If we have any frames in the buffer, use the most recent frame
         if self.hand_buffer.data_buffer:
             latest = self.hand_buffer.data_buffer[-1]
             left_coords = latest["left"]   # (x, y, z) or None
@@ -172,7 +172,6 @@ class ActionController:
             if right_coords is not None:
                 right_timestamp = frame_timestamp
 
-        # Build the final dictionary structure
         state_dict = {
             "left_hand": {
                 "position": {
@@ -197,8 +196,6 @@ class ActionController:
                 "gesture_timestamp": self.complex_gesture_timestamp
             }
         }
-
-        # Return as a JSON string
         return json.dumps(state_dict, indent=2)
 
     # --------------------
@@ -278,9 +275,9 @@ class ActionController:
                 self.update_left_hand_state(hand.grab_strength, hand.pinch_strength, hand.palm.position.y)
 
         # ---- AFTER processing all hands ----
-        # If the right hand is missing, but our complex gesture is stuck on swipe
-        if "right" not in present_hands and self.complex_state in ["swipe-up", "swipe-down"]:
-            print("[Controller] Right hand lost => resetting complex gesture to idle.")
+        # If the right hand is missing but we are stuck on a swipe, reset to idle
+        if "right" not in present_hands and self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
+            # print("[Controller] Right hand lost => resetting complex gesture to idle.")
             self.complex_state = "idle"
             self.complex_gesture_timestamp = time.time()
 
@@ -308,64 +305,77 @@ class ActionController:
                 self.hand_state["right"] = "grab-pressing"
                 self.hand_press_time["right"] = current_time
                 self.last_scroll_y = palm_y
-                print("[Right] Grab start. Will scroll if held.")
+                # print("[Right] Grab start. Will scroll if held.")
 
         elif current_state == "pinch-pressing":
             if gesture == "pinch":
                 elapsed = current_time - self.hand_press_time["right"]
                 if elapsed >= self.hold_threshold:
                     self.hand_state["right"] = "pinch-holding"
-                    print("[Right] Pinch-hold started.")
+                    # print("[Right] Pinch-hold started.")
                     self.press_down()
             else:
                 # short pinch => quick click
                 elapsed = current_time - self.hand_press_time["right"]
                 if elapsed < self.hold_threshold:
-                    print("[Right] Short pinch => click.")
+                    # print("[Right] Short pinch => click.")
                     self.trigger_click_event()
                 self.hand_state["right"] = "idle"
 
         elif current_state == "pinch-holding":
             if gesture == "pinch":
-                # Keep checking velocity each frame
-                if self.right_hand_velocity[1] > self.SWIPE_THRESHOLD:
-                    print("[Right] Pinch-hold => swipe-up.")
+                vx, vy, vz = self.right_hand_velocity
+
+                # Check vertical velocity first (up/down)
+                if vy > self.SWIPE_THRESHOLD:
+                    # print("[Right] Pinch-hold => swipe-up.")
                     self.complex_state = "swipe-up"
                     self.complex_gesture_timestamp = time.time()
 
-                elif self.right_hand_velocity[1] < -self.SWIPE_THRESHOLD:
-                    print("[Right] Pinch-hold => swipe-down.")
+                elif vy < -self.SWIPE_THRESHOLD:
+                    # print("[Right] Pinch-hold => swipe-down.")
                     self.complex_state = "swipe-down"
                     self.complex_gesture_timestamp = time.time()
 
+                # Check horizontal velocity (left/right)
+                elif vx > self.SWIPE_THRESHOLD:
+                    # print("[Right] Pinch-hold => swipe-right.")
+                    self.complex_state = "swipe-right"
+                    self.complex_gesture_timestamp = time.time()
+
+                elif vx < -self.SWIPE_THRESHOLD:
+                    # print("[Right] Pinch-hold => swipe-left.")
+                    self.complex_state = "swipe-left"
+                    self.complex_gesture_timestamp = time.time()
+
                 else:
-                    # If we were previously in swipe-up/down but now below threshold, reset
-                    if self.complex_state in ["swipe-up", "swipe-down"]:
-                        print("[Right] Velocity fell below threshold; resetting complex gesture.")
+                    # If we were in any swipe state, but now below threshold, reset
+                    if self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
+                        # print("[Right] Velocity fell below threshold; resetting complex gesture.")
                         self.complex_state = "idle"
                         self.complex_gesture_timestamp = time.time()
+
             else:
-                print("[Right] Pinch-hold ended.")
+                # print("[Right] Pinch-hold ended.")
                 self.press_up()
                 self.complex_state = "idle"
                 self.hand_state["right"] = "idle"
-
 
         elif current_state == "grab-pressing":
             if gesture == "grab":
                 elapsed = current_time - self.hand_press_time["right"]
                 if elapsed >= self.hold_threshold:
                     self.hand_state["right"] = "grab-holding"
-                    print("[Right] Grab-hold => scrolling mode.")
+                    # print("[Right] Grab-hold => scrolling mode.")
             else:
-                print("[Right] Short grab => do nothing.")
+                # print("[Right] Short grab => do nothing.")
                 self.hand_state["right"] = "idle"
 
         elif current_state == "grab-holding":
             if gesture == "grab":
                 self.scroll_with_displacement(palm_y)
             else:
-                print("[Right] Grab scroll ended.")
+                # print("[Right] Grab scroll ended.")
                 self.hand_state["right"] = "idle"
 
     def update_left_hand_state(self, grab_strength, pinch_strength, palm_y):
@@ -391,20 +401,20 @@ class ActionController:
             elif gesture == "grab":
                 self.hand_state["left"] = "grab-pressing"
                 self.hand_press_time["left"] = current_time
-                print("[Left] Grab start => maybe reset canvas?")
+                # print("[Left] Grab start => maybe reset canvas?")
 
         elif current_state == "pinch-pressing":
             if gesture == "pinch":
                 elapsed = current_time - self.hand_press_time["left"]
                 if elapsed >= self.hold_threshold:
                     self.hand_state["left"] = "pinch-holding"
-                    print("[Left] Pinch-hold started => begin drawing.")
+                    # print("[Left] Pinch-hold started => begin drawing.")
                     self.canvas.begin_drawing()
             else:
                 # short pinch => short click
                 elapsed = current_time - self.hand_press_time["left"]
                 if elapsed < self.hold_threshold:
-                    print("[Left] Short pinch => click.")
+                    # print("[Left] Short pinch => click.")
                     self.trigger_click_event()
                 self.canvas.stop_drawing()
                 self.hand_state["left"] = "idle"
@@ -413,7 +423,7 @@ class ActionController:
             if gesture == "pinch":
                 pass
             else:
-                print("[Left] Pinch-hold ended.")
+                # print("[Left] Pinch-hold ended.")
                 self.canvas.stop_drawing()
                 self.hand_state["left"] = "idle"
 
@@ -423,16 +433,16 @@ class ActionController:
                 if elapsed >= self.hold_threshold:
                     self.hand_state["left"] = "grab-holding"
                     self.canvas.clear_gesture_screen()
-                    print("[Left] Grab-hold => clear canvas.")
+                    # print("[Left] Grab-hold => clear canvas.")
             else:
-                print("[Left] Short grab => do nothing.")
+                # print("[Left] Short grab => do nothing.")
                 self.hand_state["left"] = "idle"
 
         elif current_state == "grab-holding":
             if gesture == "grab":
                 self.scroll_with_displacement(palm_y)
             else:
-                print("[Left] Grab ended => stop scrolling, clear canvas.")
+                # print("[Left] Grab ended => stop scrolling, clear canvas.")
                 self.canvas.clear_gesture_screen()
                 self.hand_state["left"] = "idle"
 
