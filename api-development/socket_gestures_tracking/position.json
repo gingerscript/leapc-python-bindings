@@ -1,24 +1,16 @@
 {
   "left_hand": {
-    "position": {
-      "x": 0,
-      "y": 0,
-      "z": 0
-    },
-    "gesture": "N/A",
-    "timestamp": 0
+    "position": null,
+    "gesture": "idle",
+    "timestamp": null
   },
   "right_hand": {
-    "position": {
-      "x": 0,
-      "y": 0,
-      "z": 0
-    },
-    "gesture": "N/A",
-    "timestamp": 0
+    "position": null,
+    "gesture": "idle",
+    "timestamp": null
   },
   "complex_gesture": {
-    "gesture": "N/A",
-    "gesture_timestamp": 0
+    "gesture": "idle",
+    "gesture_timestamp": 1739274326.541662
   }
 }

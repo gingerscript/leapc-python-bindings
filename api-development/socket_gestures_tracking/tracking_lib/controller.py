@@ -78,7 +78,9 @@ class HandTrackerBuffer:
         if valid_pairs == 0:
             return (0.0, 0.0, 0.0)
 
-        return (total_vx/valid_pairs, total_vy/valid_pairs, total_vz/valid_pairs)
+        return (total_vx / valid_pairs,
+                total_vy / valid_pairs,
+                total_vz / valid_pairs)
 
 
 class ActionController:
@@ -98,6 +100,9 @@ class ActionController:
         self.hand_state = {"left": "idle", "right": "idle"}
         self.complex_state = "idle"
         self.hand_press_time = {"left": 0.0, "right": 0.0}
+
+        # Track last time we updated a complex gesture (e.g., swipe)
+        self.complex_gesture_timestamp = 0.0
         
         self.hand_buffer = HandTrackerBuffer(maxlen=10)
         self.right_hand_velocity = (0.0, 0.0, 0.0)
@@ -124,6 +129,77 @@ class ActionController:
         # Screen resolution
         self.screen_width  = 1920
         self.screen_height = 1080
+
+    # -------------------------------------------------------------------------
+    #  get_state() -> JSON with positional, gesture, and timestamp info
+    # -------------------------------------------------------------------------
+    def get_state(self):
+        """
+        Return the structured JSON:
+        {
+          "left_hand": {
+            "position": {"x":..., "y":..., "z":...},
+            "gesture": "...",
+            "timestamp": ...
+          },
+          "right_hand": {
+            "position": {"x":..., "y":..., "z":...},
+            "gesture": "...",
+            "timestamp": ...
+          },
+          "complex_gesture": {
+            "gesture": "...",
+            "gesture_timestamp": ...
+          }
+        }
+        """
+        left_coords = None
+        right_coords = None
+        left_timestamp = None
+        right_timestamp = None
+
+        # If we have any frames in the buffer, use the most recent frame for position data
+        if self.hand_buffer.data_buffer:
+            latest = self.hand_buffer.data_buffer[-1]
+            left_coords = latest["left"]   # (x, y, z) or None
+            right_coords = latest["right"] # (x, y, z) or None
+            frame_timestamp = latest["timestamp"]
+
+            # If there's valid left coords, set left_timestamp
+            if left_coords is not None:
+                left_timestamp = frame_timestamp
+            # If there's valid right coords, set right_timestamp
+            if right_coords is not None:
+                right_timestamp = frame_timestamp
+
+        # Build the final dictionary structure
+        state_dict = {
+            "left_hand": {
+                "position": {
+                    "x": left_coords[0],
+                    "y": left_coords[1],
+                    "z": left_coords[2]
+                } if left_coords else None,
+                "gesture": self.hand_state["left"],
+                "timestamp": left_timestamp
+            },
+            "right_hand": {
+                "position": {
+                    "x": right_coords[0],
+                    "y": right_coords[1],
+                    "z": right_coords[2]
+                } if right_coords else None,
+                "gesture": self.hand_state["right"],
+                "timestamp": right_timestamp
+            },
+            "complex_gesture": {
+                "gesture": self.complex_state,
+                "gesture_timestamp": self.complex_gesture_timestamp
+            }
+        }
+
+        # Return as a JSON string
+        return json.dumps(state_dict, indent=2)
 
     # --------------------
     # Configuration
@@ -153,7 +229,7 @@ class ActionController:
         print(f"Configuration loaded from {filename}")
 
     def reset_setup(self):
-        self.max_min_x = [260, -180] 
+        self.max_min_x = [260, -180]
         self.max_min_y = [50, 0]
         self.max_min_z = [290, -140]
 
@@ -183,10 +259,10 @@ class ActionController:
     def active_handler(self, event):
         """Process gestures and optionally move mouse, etc."""
         self.hand_buffer.append(event)
-        
+
         self.right_hand_velocity = self.hand_buffer.calculate_velocity('right')
-        self.left_hand_velocity = self.hand_buffer.calculate_velocity('left')
-        
+        self.left_hand_velocity  = self.hand_buffer.calculate_velocity('left')
+
         for hand in event.hands:
             hand_type = "left" if hand.type.value == 0 else "right"
 
@@ -241,18 +317,17 @@ class ActionController:
 
         elif current_state == "pinch-holding":
             if gesture == "pinch":
-                if self.right_hand_velocity[1] > self.SWIPE_THRESHOLD: 
+                # Check vertical velocity for swipe gestures
+                if self.right_hand_velocity[1] > self.SWIPE_THRESHOLD:
                     print("[Right] Pinch-hold => swipe-up.")
                     self.complex_state = "swipe-up"
-                    # self.scroll_with_displacement(palm_y)
-                elif self.right_hand_velocity[1] < -self.SWIPE_THRESHOLD: 
+                    self.complex_gesture_timestamp = time.time()
+                elif self.right_hand_velocity[1] < -self.SWIPE_THRESHOLD:
                     print("[Right] Pinch-hold => swipe-down.")
                     self.complex_state = "swipe-down"
-                
-                else:  
+                    self.complex_gesture_timestamp = time.time()
+                else:
                     self.complex_state = "idle"
-                
-                # pass  # still pinching => continue hold
             else:
                 print("[Right] Pinch-hold ended.")
                 self.press_up()

@@ -11,6 +11,7 @@ from tracking_lib.controller import ActionController
 
 BUFFER_FILE = "position.json"
 
+
 class MyListener(leap.Listener):
     """
     This listener routes all Leap events to the ActionController
@@ -51,24 +52,26 @@ class MyListener(leap.Listener):
 
     def on_tracking_event(self, event):
         """
-        1) Pass event to controller for gesture/mouse logic,
-        2) Render hands in the canvas,
-        3) Build JSON data for each hand,
+        1) Pass event to controller for gesture/mouse logic
+        2) Render hands in the canvas
+        3) Build JSON data from the controller
         4) Emit via Socket.IO
         """
+        # Step 1: Route event
         self.action_controller.tracking_event_router(event, self.state)
 
-        # Render only affects the canvas' output_image
+        # Step 2: Render only affects the canvas' output_image
         self.action_controller.canvas.render_hands(event)
 
-        # Build JSON data to send
+        # Step 3: Build JSON data using our ActionController's get_state()
         data_to_send = self._build_data_json(event)
-        # Optionally write it locally
+
+        # Step 4: Optionally save & emit
         self._dump_data_local(data_to_send)
-        # Emit over Socket.IO
         self._emit_data(data_to_send)
 
     def _emit_data(self, data):
+        """Emit data to Socket.IO if connected."""
         if self.sio.connected:
             try:
                 self.sio.emit("hand_data", data)
@@ -76,7 +79,7 @@ class MyListener(leap.Listener):
                 print(f"[SocketIO] Emit failed: {e}")
 
     def _dump_data_local(self, data):
-        """Optionally save the data to a file so other processes can read it."""
+        """Optionally save the data to a JSON file so other processes can read it."""
         try:
             with open(BUFFER_FILE, "w") as f:
                 json.dump(data, f, indent=2)
@@ -85,76 +88,23 @@ class MyListener(leap.Listener):
 
     def _build_data_json(self, event):
         """
-        Return the structured JSON:
-        {
-          "left_hand": {
-            "position": {"x":..., "y":..., "z":...},
-            "gesture": "...",
-            "timestamp": ...
-          },
-          "right_hand": {...},
-          "complex_gesture": {
-            "gesture": "...",
-            "gesture_timestamp": ...
+        Uses ActionController.get_state() which returns the JSON string:
+          {
+            "left_hand": {
+              "position": {"x":..., "y":..., "z":...},
+              "gesture": "...",
+              "timestamp": ...
+            },
+            "right_hand": {...},
+            "complex_gesture": {
+              "gesture": "...",
+              "gesture_timestamp": ...
+            }
           }
-        }
+        We'll load it into a dict before returning, so we can emit or save as needed.
         """
-        left_hand_data = {
-            "position": {"x":0, "y":0, "z":0},
-            "gesture": "N/A",
-            "timestamp": 0
-        }
-        right_hand_data = {
-            "position": {"x":0, "y":0, "z":0},
-            "gesture": "N/A",
-            "timestamp": 0
-        }
-        complex_data = {
-            "gesture": "N/A",
-            "gesture_timestamp": 0
-        }
-
-        found_left = False
-        found_right = False
-
-        for hand in event.hands:
-            x = int(round(hand.palm.position.x))
-            y = int(round(hand.palm.position.y))
-            z = int(round(hand.palm.position.z))
-
-            # Simple detection of gesture from pinch/grab
-            gesture_label = "N/A"
-            if hand.grab_strength >= self.action_controller.grab_threshold:
-                gesture_label = "GRAB"
-            elif hand.pinch_strength >= self.action_controller.pinch_threshold:
-                gesture_label = "PINCH"
-
-            ts = int(time.time_ns())
-
-            if hand.type.value == 0:  # Left hand
-                left_hand_data["position"] = {"x": x, "y": y, "z": z}
-                left_hand_data["gesture"]  = gesture_label
-                left_hand_data["timestamp"] = ts
-                found_left = True
-
-            elif hand.type.value == 1:  # Right hand
-                right_hand_data["position"] = {"x": x, "y": y, "z": z}
-                right_hand_data["gesture"]  = gesture_label
-                right_hand_data["timestamp"] = ts
-                found_right = True
-
-        # Example "complex" gesture if both hands are present and both are PINCH
-        if found_left and found_right:
-            if (left_hand_data["gesture"] == "PINCH" and
-                right_hand_data["gesture"] == "PINCH"):
-                complex_data["gesture"] = "BOTH_HANDS_PINCH"
-                complex_data["gesture_timestamp"] = int(time.time_ns())
-
-        return {
-            "left_hand": left_hand_data,
-            "right_hand": right_hand_data,
-            "complex_gesture": complex_data
-        }
+        json_str = self.action_controller.get_state()  # returns a JSON string
+        return json.loads(json_str)  # Convert to Python dict for Socket.IO / file
 
 
 def main():
@@ -169,7 +119,6 @@ def main():
 
     # 1) Setup Canvas & Controller
     canvas = Canvas()
-    # Enable OS-level "click and drag" if --control was given
     action_controller = ActionController(canvas, enable_control=args.control)
     action_controller.load_config()  # Load existing play_area_config.json if present
 
@@ -220,8 +169,6 @@ def main():
             print("  f => Toggle Hand Format")
 
             while running:
-                # Prompt user for a command (blocking). Alternatively, you could
-                # do a non-blocking approach in a separate thread, but this is simplest:
                 user_input = input("Enter command: ").strip().lower()
 
                 if user_input == 'x':
