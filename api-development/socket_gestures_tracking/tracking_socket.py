@@ -9,13 +9,11 @@ import sys
 from tracking_lib.canvas import Canvas, _TRACKING_MODES
 from tracking_lib.controller import ActionController
 
-BUFFER_FILE = "position.json"
-
 
 class MyListener(leap.Listener):
     """
     This listener routes all Leap events to the ActionController
-    and also emits data via Socket.IO.
+    and also emits data via Socket.IO to our server.
     """
     def __init__(self, action_controller, server_url="http://localhost:5000"):
         super().__init__()
@@ -63,48 +61,32 @@ class MyListener(leap.Listener):
         # Step 2: Render only affects the canvas' output_image
         self.action_controller.canvas.render_hands(event)
 
-        # Step 3: Build JSON data using our ActionController's get_state()
-        data_to_send = self._build_data_json(event)
+        # Step 3: Build JSON data using our ActionController.get_state()
+        data_to_send = self._build_data_dict()
 
-        # Step 4: Optionally save & emit
-        self._dump_data_local(data_to_send)
+        # Step 4: Emit to server (no local file writes)
         self._emit_data(data_to_send)
 
     def _emit_data(self, data):
         """Emit data to Socket.IO if connected."""
         if self.sio.connected:
             try:
-                self.sio.emit("hand_data", data)
+                self.sio.emit("hand_data", data)  # send to server
             except Exception as e:
                 print(f"[SocketIO] Emit failed: {e}")
 
-    def _dump_data_local(self, data):
-        """Optionally save the data to a JSON file so other processes can read it."""
-        try:
-            with open(BUFFER_FILE, "w") as f:
-                json.dump(data, f, indent=2)
-        except IOError as e:
-            print(f"Error writing {BUFFER_FILE}: {e}")
-
-    def _build_data_json(self, event):
+    def _build_data_dict(self):
         """
-        Uses ActionController.get_state() which returns the JSON string:
+        ActionController.get_state() returns a JSON string with structure:
           {
-            "left_hand": {
-              "position": {"x":..., "y":..., "z":...},
-              "gesture": "...",
-              "timestamp": ...
-            },
+            "left_hand": {...},
             "right_hand": {...},
-            "complex_gesture": {
-              "gesture": "...",
-              "gesture_timestamp": ...
-            }
+            "complex_gesture": {...}
           }
-        We'll load it into a dict before returning, so we can emit or save as needed.
+        Convert it to a Python dict for convenient Socket.IO emission.
         """
         json_str = self.action_controller.get_state()  # returns a JSON string
-        return json.loads(json_str)  # Convert to Python dict for Socket.IO / file
+        return json.loads(json_str)  # Convert to Python dict
 
 
 def main():
@@ -131,9 +113,10 @@ def main():
 
     running = True
     with connection.open():
+        # Example: Desktop mode
         connection.set_tracking_mode(leap.TrackingMode.Desktop)
 
-        # If user requested a Canvas, we show the OpenCV window & read keys from the window
+        # If user requested a Canvas, we show the OpenCV window & read keys
         if args.canvas:
             while running:
                 cv2.imshow(canvas.name, canvas.output_image)
@@ -154,13 +137,13 @@ def main():
                 elif key == ord('c'):
                     print("Switching to Setup Mode...")
                     my_listener.set_state(2)
-                
+
                 elif key == ord('f'):
                     print("Toggling hand format between Skeleton/Dots...")
                     canvas.toggle_hands_format()
 
         else:
-            # If we're NOT showing the Canvas, we rely on console input for commands.
+            # If no Canvas, rely on console input for commands.
             print("No --canvas provided. Use console commands:")
             print("  x => Exit")
             print("  a => Active Mode")
@@ -198,7 +181,7 @@ def main():
     if args.canvas:
         cv2.destroyAllWindows()
 
-    # Disconnect Socket.IO
+    # Clean up Socket.IO
     if my_listener.sio.connected:
         my_listener.sio.disconnect()
 
