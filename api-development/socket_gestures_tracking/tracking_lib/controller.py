@@ -274,12 +274,18 @@ class ActionController:
             elif hand_type == "left":
                 self.update_left_hand_state(hand.grab_strength, hand.pinch_strength, hand.palm.position.y)
 
+        recognized_gesture = self.canvas.get_and_forget_drawn_gesture()
+        if recognized_gesture:
+            print(f"[ActionController] Detected new drawn gesture: {recognized_gesture}")
+            self.complex_state = recognized_gesture
+            self.complex_gesture_timestamp = time.time()
+
         # ---- AFTER processing all hands ----
         # If the right hand is missing but we are stuck on a swipe, reset to idle
-        if "right" not in present_hands and self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
+        if "right" not in present_hands and self.complex_state != "idle":
             # print("[Controller] Right hand lost => resetting complex gesture to idle.")
             self.complex_state = "idle"
-            self.complex_gesture_timestamp = time.time()
+            self.complex_gesture_timestamp = time.time()    
 
     def update_right_hand_state(self, grab_strength, pinch_strength, palm_y):
         """Simple state machine for the right hand (grab or pinch)."""

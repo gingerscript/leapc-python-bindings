@@ -39,6 +39,8 @@ class Canvas:
         self.output_image = np.zeros((self.screen_size[0], self.screen_size[1], 3), np.uint8)
         self.tracking_mode = None
         self.counter = 0  # Simple drawing rate-limiter
+        
+        self.drawn_gesture = None
 
     def set_tracking_mode(self, tracking_mode):
         """Store the current tracking mode so we can display it on screen."""
@@ -53,41 +55,31 @@ class Canvas:
         self.is_drawing = True
 
     def stop_drawing(self):
-        """
-        Stop drawing. If we have more than 10 points, convert them
-        into a 2D grid and compare to reference gestures.
-        """
         self.is_drawing = False
-        
-        # If enough points have been drawn, process the gesture
+            
         if len(self.drawn_points) > 10:
             grid = self.create_grid_from_points(
                 points=self.drawn_points,
                 grid_size=(100, 100)
             )
-            
-            # Optionally save points as image and numpy array
-            self.save_gesture_grid(grid, save_as_image=False, save_as_npy=False) #SET TO TRUE TO SAVE
 
-            cv2.imshow("Gesture Grid", grid * 255)
-            cv2.waitKey(20)
+            # cv2.imshow("Gesture Grid", grid * 255)
+            # cv2.waitKey(20)
 
             # Compare with references (using Hausdorff)
             ranking = self.rank_reference_gestures(grid)
             
-            if ranking[0][1] < self.MATCH_THRESHOLD:
-                print("Similarity Ranking (lower Hausdorff => better match):")
-                for gesture_name, score in ranking:
-                    print(f"  {gesture_name} => {score:.2f}")
-
+            if ranking:
                 best_match, best_score = ranking[0]
-                print(f"Best match: {best_match} (Hausdorff={best_score:.2f})")
-            else:
-                print("No valid reference files found.")
-        
-        
+                if best_score < self.MATCH_THRESHOLD:
+                    # Store the recognized gesture:
+                    self.drawn_gesture = best_match
+                    print(f"Best match: {best_match} (Hausdorff={best_score:.2f})")
+                else:
+                    print("No valid reference files found.")
         
         self.clear_gesture_screen()
+
 
     def clear_gesture_screen(self):
         self.drawn_points.clear()
@@ -262,3 +254,12 @@ class Canvas:
             filename_npy = f"drawn_gestures/saved_gesture_{timestamp}.npy"
             np.save(filename_npy, grid)
             print(f"Saved gesture data as: {filename_npy}")
+
+    def get_and_forget_drawn_gesture(self):
+        """
+        Returns the recognized gesture name (str) or None if no gesture,
+        then resets self.drawn_gesture to None.
+        """
+        gesture = self.drawn_gesture
+        self.drawn_gesture = None
+        return gesture
