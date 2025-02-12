@@ -71,27 +71,6 @@ class UltraLeapListener(leap.Listener):
     def on_tracking_event(self, event):
         hands_data = self.return_dict
         if len(event.hands)>0:
-            # for index_finger in range(0, len(event.hands)):
-            #     hand = event.hands[index_finger]
-            #     fingers.append([]) 
-            #     for index_digit in range(0, 5):
-            #         digit = hand.digits[index_digit]
-            #         fingers[index_finger].append([]) 
-            #         for index_bone in range(0, 4):
-            #             bone = digit.bones[index_bone]
-            #             fingers[index_finger][index_digit].append({
-            #                 "prev_joint": {
-            #                     "x": bone.prev_joint.x,
-            #                     "y": bone.prev_joint.z,
-            #                     "z": bone.prev_joint.y,
-            #                 },
-            #                 "next_joint": {
-            #                     "x": bone.next_joint.x,
-            #                     "y": bone.next_joint.z,
-            #                     "z": bone.next_joint.y,
-            #                 }})
-                        
-          
             # for hand in event.hands:
             timestamp = str(time.time_ns())
             hands_data[structure["timestampOffset1"]] = int(timestamp[0:7])
@@ -138,7 +117,6 @@ class UltraLeap(Process):
         leap_listener = UltraLeapListener(self.return_dict)
         connection = leap.Connection()
         connection.add_listener(leap_listener)
-        
         with connection.open():  # Keeps Leap Motion running in its own loop
             connection.set_tracking_mode(leap.TrackingMode.Desktop)
        
@@ -188,29 +166,6 @@ def transfer_data():
                         source[structure[f"{hand_type}_finger_{finger_index}_{bone_index}_y"]],
                         source[structure[f"{hand_type}_finger_{finger_index}_{bone_index}_z"]]
                     ]) 
-                    
-        # data = {
-        #     "timestamp":timestamp,
-        #     "hands":{
-        #         "left":{
-        #             "palm":{
-        #                 "position":{
-        #                     "x":source[structure[f"left_hand_palm.x"]],
-        #                     "y":source[structure[f"left_hand_palm.y"]],
-        #                     "z":source[structure[f"left_hand_palm.z"]]},
-        #             },
-        #             "bones":[
-        #                 [
-        #                     {source[structure[f"left_hand_palm.x"]]}
-        #                 ]
-        #             ],
-        #             "pinch_strength":source[structure[f"left_pinch_strength.x"]],
-        #             "grab_strength":source[structure[f"left_grab_strength.x"]],
-        #             "chirality":source[structure[f"left_chirality.x"]],
-        #             "gesture":source[structure[f"left_gesture.x"]],
-        #         },
-        #     }
-        # }
     return data
     # return {}
 def listener():
