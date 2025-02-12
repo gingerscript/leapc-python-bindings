@@ -1,0 +1,16 @@
+{
+  "left_hand": {
+    "position": null,
+    "gesture": "idle",
+    "timestamp": null
+  },
+  "right_hand": {
+    "position": null,
+    "gesture": "idle",
+    "timestamp": null
+  },
+  "complex_gesture": {
+    "gesture": "idle",
+    "gesture_timestamp": 1739274326.541662
+  }
+}

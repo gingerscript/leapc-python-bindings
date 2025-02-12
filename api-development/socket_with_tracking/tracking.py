@@ -23,6 +23,13 @@ class MyListener(leap.Listener):
         except leap.LeapCannotOpenDeviceError:
             info = event.device.get_info()
         print(f"Found device {info.serial}")
+    
+    def dump_data(self, data):
+        try:
+            with open(BUFFER_FILE, "w") as f:
+                json.dump(data, f)
+        except IOError as e:
+            print(f"Error writing to {BUFFER_FILE}: {e}")
 
     def on_tracking_event(self, event):
         # If there's at least one hand, pick the first
@@ -40,6 +47,7 @@ class MyListener(leap.Listener):
                 y_pos = int(round(palm_y))
                 z_pos = int(round(palm_z))
                 # Write that to the file
+                
                 data = {
                         "hand_position" : {
                             "x" : x_pos,
@@ -51,11 +59,7 @@ class MyListener(leap.Listener):
                         "timestamp": time.time_ns()
                         }
                 
-                try:
-                    with open(BUFFER_FILE, "w") as f:
-                        json.dump(data, f)
-                except IOError as e:
-                    print(f"Error writing to {BUFFER_FILE}: {e}")
+                self.dump_data(data)
 
                 # Optionally print
                 # print("Palm X =", palm_x, " => storing", x_pos)
