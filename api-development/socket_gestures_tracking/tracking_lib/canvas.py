@@ -14,7 +14,7 @@ class Canvas:
     def __init__(self):
         self.name = "Python Gemini Visualiser"
         self.screen_size = [500, 700]
-        self.drawn_points = deque(maxlen=100)
+        self.drawn_points = deque(maxlen=200)
         self.is_drawing = False
 
         self.hands_colour = (255, 255, 255)
@@ -41,17 +41,28 @@ class Canvas:
 
     def stop_drawing(self):
         self.is_drawing = False
+        
+        # Check if something is detected
+        
+        self.clear_gesture_screen()
 
     def clear_gesture_screen(self):
         self.drawn_points.clear()
 
-    def get_joint_position(self, leap_vector):
+    def get_joint_position(self, leap_vector, enable_z=False):
         """Convert Leap Motion 3D coordinates to Canvas 2D coordinates."""
         if leap_vector is None:
             return None
         x = int(leap_vector.x + (self.screen_size[1] / 2))
-        y = int(leap_vector.z + (self.screen_size[0] / 2))
-        return (x, y)
+        y = int(-leap_vector.y + (self.screen_size[0]))
+        z = int(leap_vector.z)
+        
+        if enable_z:
+            return (x, y, z)
+        else:
+            return (x, y)
+    
+    
 
     def render_hands(self, event):
         """
@@ -90,9 +101,9 @@ class Canvas:
                 digit = hand.digits[digit_idx]
                 for bone_idx in range(4):
                     bone = digit.bones[bone_idx]
-                    self._draw_bone(bone, hand)
+                    self._draw_bone(bone, hand, digit_idx, bone_idx)
 
-    def _draw_bone(self, bone, hand):
+    def _draw_bone(self, bone, hand, digit_idx, bone_idx):
         """
         Draw either 'Dots' or 'Skeleton' representation of each bone.
         """
@@ -125,12 +136,13 @@ class Canvas:
 
         # If "drawing" is enabled, maybe store the fingertip position
         # (Hand-coded example from your original logic)
-        if self.is_drawing:
-            # Could store bone_end to self.drawn_points if you want to draw lines
-            self.counter += 1
-            if self.counter % 2 == 0 and bone_end:
-                self.drawn_points.append(bone_end)
-                self.counter = 0
+        if (digit_idx == 1) and (bone_idx == 3):
+            if self.is_drawing and hand.type.value == 1:
+                # Could store bone_end to self.drawn_points if you want to draw lines
+                self.counter += 1
+                if self.counter % 2 == 0 and bone_end:
+                    self.drawn_points.append(bone_end)
+                    self.counter = 0
 
         # Draw recorded points if any:
         for p in self.drawn_points:
