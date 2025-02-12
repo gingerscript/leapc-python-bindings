@@ -12,7 +12,8 @@ REFERENCE_PATHS = {
     "vertical_line": "drawn_gestures/vertical_line.npy",
     "horizontal_line": "drawn_gestures/horizontal_line.npy",
     "bar_chart": "drawn_gestures/bar_chart.npy",
-    "horizontal_bar_chart": "drawn_gestures/horizontal_bar_chart.npy"
+    "horizontal_bar_chart": "drawn_gestures/horizontal_bar_chart.npy",
+    # "spiral": "drawn_gestures/spiral.npy"  # Spiral needs to be rethought, conflicts with other gestures
 }
 
 _TRACKING_MODES = {
