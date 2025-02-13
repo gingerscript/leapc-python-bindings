@@ -20,9 +20,10 @@ structure={
     "timestampOffset2":1,
     "timestampOffset3":2,
     "hand_type":3,
+    "hand_count":4
 } 
 
-hand_data_length = 4
+hand_data_length = 5
 for hand_index in range(0,2):
     offset = hand_data_offset*hand_index-1
     if hand_index == 0:
@@ -70,13 +71,19 @@ class UltraLeapListener(leap.Listener):
         print(f"Found device {info.serial}")
     def on_tracking_event(self, event):
         hands_data = self.return_dict
+        # timestamp = str(time.time_ns())
+        # hands_data[structure["timestampOffset1"]] = int(timestamp[0:7])
+        # hands_data[structure["timestampOffset2"]] = int(timestamp[7:14])
+        # hands_data[structure["timestampOffset3"]] = int(timestamp[14:20])
+        hands_data[structure["hand_count"]] = len(event.hands)
         if len(event.hands)>0:
             # for hand in event.hands:
-            timestamp = str(time.time_ns())
-            hands_data[structure["timestampOffset1"]] = int(timestamp[0:7])
-            hands_data[structure["timestampOffset2"]] = int(timestamp[7:14])
-            hands_data[structure["timestampOffset3"]] = int(timestamp[14:20])
+            # timestamp = str(time.time_ns())
+            # hands_data[structure["timestampOffset1"]] = int(timestamp[0:7])
+            # hands_data[structure["timestampOffset2"]] = int(timestamp[7:14])
+            # hands_data[structure["timestampOffset3"]] = int(timestamp[14:20])
             hands_data[structure["hand_type"]] = int(event.hands[0].type.value)
+            # hands_data[structure["hand_count"]] = len(event.hands)
             for hand_index in range(0, len(event.hands)):
                 hand = event.hands[hand_index]
                 chirality = int(hand.type.value)
@@ -130,16 +137,16 @@ socketio = SocketIO(app, cors_allowed_origins="*",cors_credentials=False)
 
 def transfer_data():
     source = list(return_dict)
-    if source[0] == -1:
-        data = {}
-    else:
-        chirality = source[3]
-        timestamp = str(int(source[0]))+str(int(source[1]))+str(int(source[2]))
-
-        data = {
+    timestamp = time.time_ns()
+    hand_count = int(source[structure["hand_count"]])
+    data = {
             "timestamp":timestamp,
-            "hands":{}
+            "hands":{},
+            "hand_count":hand_count,
         }
+    if hand_count != 0:
+        chirality = source[3]
+        
         for hand_index in range(0,2):
             if hand_index == 0:
                 hand_type = "left"
@@ -169,9 +176,13 @@ def transfer_data():
     return data
     # return {}
 def listener():
+    tracking_response_time = 0
     while True:
-        socketio.emit("hand_update",transfer_data())
-        time.sleep(0.00001)
+        timestamp = time.time_ns()/1000000
+        # dispatch per 30ms
+        if(timestamp - tracking_response_time > 600):
+            socketio.emit("tracking_update",transfer_data())
+            tracking_response_time = timestamp
     
 @app.route('/')
 def index():

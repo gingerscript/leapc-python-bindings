@@ -10,7 +10,6 @@ from tracking_lib.controller import ActionController
 class GestureActionController():
     def __init__(self):
         self.state = 0
-
         parser = argparse.ArgumentParser(
             description="Leap Motion Tracking with optional Canvas display."
         )
@@ -66,6 +65,7 @@ class GestureActionController():
 class UltraLeapListener(leap.Listener):
     def __init__(self):
         super().__init__()
+        self.tracking_response_time = 0
         self.init_counter = 0
 
     def on_connection_event(self, event):
@@ -84,78 +84,76 @@ class UltraLeapListener(leap.Listener):
     def before_tracking_dispatch(self,source,data):
         pass
     def on_tracking_event(self, event):
-        data = {
-                "timestamp":time.time_ns(),
-                "hands":{},
-                "hand_count":len(event.hands)
-            }
-        if len(event.hands) > 0:
-            for hand_index in range(0,len(event.hands)):
-                hand = event.hands[hand_index]
-                chirality = int(hand.type.value)
-                
-                if chirality == 0:
-                    data["hands"]["left"]={}
-                    hand_data = data["hands"]["left"]
-                else:
-                    data["hands"]["right"]={}
-                    hand_data = data["hands"]["right"]
-
-                palm = hand.palm
+        timestamp = time.time_ns()/1000000
+        # dispatch per 20ms
+        if(timestamp-self.tracking_response_time > 20):
+            self.tracking_response_time = timestamp
+            data = {
+                    "timestamp":timestamp,
+                    "hands":{},
+                    "hand_count":len(event.hands)
+                }
+            if len(event.hands) > 0:
+                for hand_index in range(0,len(event.hands)):
+                    hand = event.hands[hand_index]
+                    chirality = int(hand.type.value)
                     
-                hand_data["palm"] = {
-                    "position":list(palm.position),
-                    "velocity":list(palm.velocity),
-                    "normal":list(palm.normal),
-                    "stabilized_position":list(palm.stabilized_position),
-                    "direction":list(palm.direction),
-                    "orientation":{
-                        "x":palm.orientation.x,
-                        "y":palm.orientation.y,
-                        "z":palm.orientation.z,
-                        "w":palm.orientation.w,
-                    },
-                    "width":palm.width,
-                }
+                    if chirality == 0:
+                        data["hands"]["left"]={}
+                        hand_data = data["hands"]["left"]
+                    else:
+                        data["hands"]["right"]={}
+                        hand_data = data["hands"]["right"]
 
-                hand_data["pinch_strength"] = hand.pinch_strength
-                hand_data["grab_strength"] = hand.grab_strength
-                hand_data["id"] = hand.id
-                hand_data["flags"] = hand.flags
-                hand_data["confidence"] = hand.confidence
-                hand_data["visible_time"] = hand.visible_time
-                hand_data["pinch_distance"] = hand.pinch_distance
-                hand_data["grab_angle"] = hand.grab_angle
+                    palm = hand.palm
+                        
+                    hand_data["palm"] = {
+                        "position":list(palm.position),
+                        "velocity":list(palm.velocity),
+                        "normal":list(palm.normal),
+                        "stabilized_position":list(palm.stabilized_position),
+                        "direction":list(palm.direction),
+                        "orientation":{
+                            "x":palm.orientation.x,
+                            "y":palm.orientation.y,
+                            "z":palm.orientation.z,
+                            "w":palm.orientation.w,
+                        },
+                        "width":palm.width,
+                    }
 
-                # finger data
-                hand_data["fingers"]=[]
-                for finger_index in range(0, len(hand.digits)):
-                    digit = hand.digits[finger_index]
-                    hand_data["fingers"].append([])
-                    for bone_index in range(0, 4):
-                        bone = digit.bones[bone_index]
-                        hand_data["fingers"][finger_index].append([list(bone.next_joint)])
-                # arm data
-                hand_data["arm"]={
-                    "prev_joint":list(hand.arm.prev_joint),
-                    "next_joint":list(hand.arm.next_joint),
-                    "width":hand.arm.width,
-                    "rotation":{
-                        "x":hand.arm.rotation.x,
-                        "y":hand.arm.rotation.y,
-                        "z":hand.arm.rotation.z,
-                        "w":hand.arm.rotation.w,
-                    },
-                }
-        
-        # Step 4: Emit to server (no local file writes)
-        if self.init_counter < 4: # emit every 4 frames to prevent IO bottleneck
-            self.init_counter += 1
-        else:
-            self.init_counter = 0
-            self.before_tracking_dispatch(event,data)
-            self.dispatch(data)
-        return data
+                    hand_data["pinch_strength"] = hand.pinch_strength
+                    hand_data["grab_strength"] = hand.grab_strength
+                    hand_data["id"] = hand.id
+                    hand_data["flags"] = hand.flags
+                    hand_data["confidence"] = hand.confidence
+                    hand_data["visible_time"] = hand.visible_time
+                    hand_data["pinch_distance"] = hand.pinch_distance
+                    hand_data["grab_angle"] = hand.grab_angle
+
+                    # finger data
+                    hand_data["fingers"]=[]
+                    for finger_index in range(0, len(hand.digits)):
+                        digit = hand.digits[finger_index]
+                        hand_data["fingers"].append([])
+                        for bone_index in range(0, 4):
+                            bone = digit.bones[bone_index]
+                            hand_data["fingers"][finger_index].append([list(bone.next_joint)])
+                    # arm data
+                    hand_data["arm"]={
+                        "prev_joint":list(hand.arm.prev_joint),
+                        "next_joint":list(hand.arm.next_joint),
+                        "width":hand.arm.width,
+                        "rotation":{
+                            "x":hand.arm.rotation.x,
+                            "y":hand.arm.rotation.y,
+                            "z":hand.arm.rotation.z,
+                            "w":hand.arm.rotation.w,
+                        },
+                    }
+                self.before_tracking_dispatch(event,data)
+                self.dispatch(data)
+            
     def before_run(self):
         pass
     def running(self):
@@ -180,6 +178,10 @@ class UltraLeapActionListener(UltraLeapListener):
         action_data = self.gesture_action_controller.parsing_data(source)
         data["complex_gesture"] = action_data["complex_gesture"]
 
+    def on_tracking_event(self, event):
+        state = self.gesture_action_controller.get_state()
+        if state != 0:
+            super().on_tracking_event(event)
 
     def before_run(self):
         print(" No --canvas provided. Use console commands:")

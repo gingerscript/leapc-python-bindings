@@ -119,8 +119,9 @@
 
         socket.on("tracking_update", function (data) {
             // data => { left_hand: {...}, right_hand: {...}, complex_gesture: {...} }
-            if (!data?.hand_count) return;
             console.log(data)
+            if (!data?.hand_count) return;
+
             /*** LEFT HAND ***/
             const leftHand = data.hands.left?.palm || {};
             const leftPos = leftHand.position || [0, 0, 0];
