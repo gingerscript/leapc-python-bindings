@@ -166,6 +166,16 @@ class ActionController:
             "gesture_timestamp": ...
           }
         }
+        
+        if complex_gesture == "zoom":
+        "complex_gesture": {
+        "gesture": "zoom",
+        "gesture_timestamp": 1691858647.1234,
+        "zoom": {
+            "multiplier": 1.15
+            }
+        }
+
         """
         
         left_coords = None
@@ -211,6 +221,13 @@ class ActionController:
                 "gesture_timestamp": self.complex_gesture_timestamp
             }
         }
+
+        # If we are in a zoom state, embed a "zoom" object
+        if self.complex_state == "zoom":
+            state_dict["complex_gesture"]["zoom"] = {
+                "multiplier": self.zoom_multiplier
+            }
+
         return json.dumps(state_dict, indent=2)
 
     # --------------------
@@ -310,6 +327,47 @@ class ActionController:
             # print("[Controller] Right hand lost => resetting complex gesture to idle.")
             self.complex_state = "idle"
             self.complex_gesture_timestamp = time.time()   
+        
+        # -----------------------------------------------------
+        # ZOOM LOGIC: Check if both hands are in a grab-holding
+        # -----------------------------------------------------
+        left_st  = self.hand_state["left"]
+        right_st = self.hand_state["right"]
+
+        # Some people might define 'grab_holding' states as e.g. 
+        #    "grab-away-holding" OR "grab-towards-holding"
+        # Adjust this check to match your naming:
+        left_is_grabbing  = (left_st  in ["grab-away-holding", "grab-towards-holding"])
+        right_is_grabbing = (right_st in ["grab-away-holding", "grab-towards-holding"])
+
+        if left_is_grabbing and right_is_grabbing:
+            dist = self.distance_between_hands()
+            if dist is not None:
+                # If we haven't established a baseline, set it now
+                if self.zoom_baseline_distance is None:
+                    self.zoom_baseline_distance = dist
+                    self.zoom_multiplier = 1.0
+                    self.complex_state = "zoom"
+                    self.complex_gesture_timestamp = time.time()
+                else:
+                    # compute ratio
+                    if self.zoom_baseline_distance > 1e-6:
+                        self.zoom_multiplier = dist / self.zoom_baseline_distance
+                        # We'll remain in "zoom" as long as both are grabbing
+                        if self.complex_state != "zoom":
+                            self.complex_state = "zoom"
+                            self.complex_gesture_timestamp = time.time()
+            # if dist is None, do nothing special
+        else:
+            # If either hand left the grab-holding state,
+            # end the zoom gesture
+            if self.complex_state == "zoom":
+                self.complex_state = "idle"
+                self.complex_gesture_timestamp = time.time()
+            
+            # Reset the baseline
+            self.zoom_baseline_distance = None
+            self.zoom_multiplier = 1.0
              
     def _check_for_pinch_swipe(self):
         """
@@ -340,6 +398,30 @@ class ActionController:
             if self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
                 self.complex_state = "idle"
                 self.complex_gesture_timestamp = time.time()
+    
+    def distance_between_hands(self):
+        """
+        Returns the 3D distance between left and right palm positions (in mm),
+        or None if one of them is missing.
+        """
+        if not self.hand_buffer.data_buffer:
+            return None
+        
+        latest = self.hand_buffer.data_buffer[-1]
+        left_coords = latest["left"]   # (x, y, z) or None
+        right_coords = latest["right"] # (x, y, z) or None
+        
+        if (left_coords is None) or (right_coords is None):
+            return None
+        
+        lx, ly, lz = left_coords
+        rx, ry, rz = right_coords
+        dx = rx - lx
+        dy = ry - ly
+        dz = rz - lz
+        
+        return math.sqrt(dx*dx + dy*dy + dz*dz)
+
                 
 
     def get_thumb_direction(self, thumb):
