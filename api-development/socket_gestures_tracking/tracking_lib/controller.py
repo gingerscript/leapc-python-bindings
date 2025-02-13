@@ -3,6 +3,7 @@ import time
 import os
 import ctypes
 from collections import deque
+import numpy as np
 
 
 class HandTrackerBuffer:
@@ -265,186 +266,382 @@ class ActionController:
         for hand in event.hands:
             hand_type = "left" if hand.type.value == 0 else "right"
             present_hands.add(hand_type)
+            
+            # For determining hand orientation
+            device_forward = np.array([0, 0, 1])  # Leap Motion is typically +Z
+            palm_normal = np.array([hand.palm.normal.x, hand.palm.normal.y, hand.palm.normal.z])
+            dot_product = np.dot(palm_normal, device_forward) # if negative palm is facing device, positive is facing away
+            
 
             if hand_type == "right":
-                px, py, pz = hand.palm.position.x, hand.palm.position.y, hand.palm.position.z
+                px, py = hand.palm.position.x, hand.palm.position.y
                 self.move_cursor(px, py, 1, 1)  # Only moves mouse if enable_control = True
-                self.update_right_hand_state(hand.grab_strength, hand.pinch_strength, py)
+                self.update_right_hand_state(hand.grab_strength, hand.pinch_strength, hand.palm.position.y, dot_product)
 
             elif hand_type == "left":
-                self.update_left_hand_state(hand.grab_strength, hand.pinch_strength, hand.palm.position.y)
+                self.update_left_hand_state(hand.grab_strength, hand.pinch_strength, hand.palm.position.y, dot_product)
+
+        recognized_gesture = self.canvas.get_and_forget_drawn_gesture()
+        if recognized_gesture:
+            print(f"[ActionController] Detected new drawn gesture: {recognized_gesture}")
+            self.complex_state = recognized_gesture
+            self.complex_gesture_timestamp = time.time()
 
         # ---- AFTER processing all hands ----
         # If the right hand is missing but we are stuck on a swipe, reset to idle
-        if "right" not in present_hands and self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
+        if "right" not in present_hands and self.complex_state != "idle":
             # print("[Controller] Right hand lost => resetting complex gesture to idle.")
             self.complex_state = "idle"
+            self.complex_gesture_timestamp = time.time()   
+             
+    def _check_for_pinch_swipe(self):
+        """
+        Checks the right hand velocity (vx, vy, vz) during pinch-holding
+        and sets self.complex_state accordingly if a swipe is detected.
+        """
+        vx, vy, vz = self.right_hand_velocity
+
+        # Check vertical velocity first (up/down)
+        if vy > self.SWIPE_THRESHOLD:
+            self.complex_state = "swipe-up"
+            self.complex_gesture_timestamp = time.time()
+        elif vy < -self.SWIPE_THRESHOLD:
+            self.complex_state = "swipe-down"
             self.complex_gesture_timestamp = time.time()
 
-    def update_right_hand_state(self, grab_strength, pinch_strength, palm_y):
-        """Simple state machine for the right hand (grab or pinch)."""
-        current_time  = time.time()
+        # Check horizontal velocity (left/right)
+        elif vx > self.SWIPE_THRESHOLD:
+            self.complex_state = "swipe-right"
+            self.complex_gesture_timestamp = time.time()
+        elif vx < -self.SWIPE_THRESHOLD:
+            self.complex_state = "swipe-left"
+            self.complex_gesture_timestamp = time.time()
+
+        else:
+            # If we already have a swipe state and it goes below threshold,
+            # you might reset to idle or do nothing
+            if self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
+                self.complex_state = "idle"
+                self.complex_gesture_timestamp = time.time()
+
+
+    def update_right_hand_state(self, grab_strength, pinch_strength, palm_y, dot_product):
+        """
+        An extended state machine for the right hand, distinguishing:
+        - open-palm-away
+        - open-palm-towards
+        - pinch-pressing / pinch-holding (with swipe detection)
+        - grab-away-pressing / grab-away-holding
+        - grab-towards-pressing / grab-towards-holding
+        """
+        current_time = time.time()
         current_state = self.hand_state["right"]
 
+        # Check if pinch/grab are active
         pinch_active = (pinch_strength >= self.pinch_threshold)
         grab_active  = (grab_strength >= self.grab_threshold)
 
-        # Priority: pinch if pinch_strength > grab_strength
+        # Determine basic palm orientation from dot_product:
+        #   dot < 0 => palm_away, dot >= 0 => palm_towards
+        palm_orientation = "palm_away" if (dot_product < 0) else "palm_towards"
+
+        # Decide gesture type (pinch or grab + orientation)
         gesture = None
         if pinch_active and (pinch_strength > grab_strength):
             gesture = "pinch"
         elif grab_active:
-            gesture = "grab"
+            if palm_orientation == "palm_away":
+                gesture = "grab_palm_away"
+            else:
+                gesture = "grab_palm_towards"
 
-        if current_state == "idle":
+        # -------------------------------------------------------------
+        #   OPEN-PALM States => default fallback if no pinch/grab
+        # -------------------------------------------------------------
+        # We'll treat any "idle" or unknown state as one of the open-palm states.
+        if current_state in ("idle", "open-palm-away", "open-palm-towards"):
             if gesture == "pinch":
                 self.hand_state["right"] = "pinch-pressing"
                 self.hand_press_time["right"] = current_time
 
-            elif gesture == "grab":
-                self.hand_state["right"] = "grab-pressing"
+            elif gesture == "grab_palm_away":
+                self.hand_state["right"] = "grab-away-pressing"
                 self.hand_press_time["right"] = current_time
                 self.last_scroll_y = palm_y
-                # print("[Right] Grab start. Will scroll if held.")
 
+            elif gesture == "grab_palm_towards":
+                self.hand_state["right"] = "grab-towards-pressing"
+                self.hand_press_time["right"] = current_time
+                self.last_scroll_y = palm_y
+
+            else:
+                # No pinch/grab => remain in open-palm-away or open-palm-towards
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
+
+        # -------------------------------------------------------------
+        #        PINCH-PRESSING
+        # -------------------------------------------------------------
         elif current_state == "pinch-pressing":
             if gesture == "pinch":
                 elapsed = current_time - self.hand_press_time["right"]
                 if elapsed >= self.hold_threshold:
                     self.hand_state["right"] = "pinch-holding"
-                    # print("[Right] Pinch-hold started.")
+                    # e.g., press mouse down or do something else
                     self.press_down()
             else:
                 # short pinch => quick click
                 elapsed = current_time - self.hand_press_time["right"]
                 if elapsed < self.hold_threshold:
-                    # print("[Right] Short pinch => click.")
                     self.trigger_click_event()
-                self.hand_state["right"] = "idle"
+                # revert to open-palm states
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
 
+        # -------------------------------------------------------------
+        #        PINCH-HOLDING (Swipes happen here)
+        # -------------------------------------------------------------
         elif current_state == "pinch-holding":
             if gesture == "pinch":
-                vx, vy, vz = self.right_hand_velocity
-
-                # Check vertical velocity first (up/down)
-                if vy > self.SWIPE_THRESHOLD:
-                    # print("[Right] Pinch-hold => swipe-up.")
-                    self.complex_state = "swipe-up"
-                    self.complex_gesture_timestamp = time.time()
-
-                elif vy < -self.SWIPE_THRESHOLD:
-                    # print("[Right] Pinch-hold => swipe-down.")
-                    self.complex_state = "swipe-down"
-                    self.complex_gesture_timestamp = time.time()
-
-                # Check horizontal velocity (left/right)
-                elif vx > self.SWIPE_THRESHOLD:
-                    # print("[Right] Pinch-hold => swipe-right.")
-                    self.complex_state = "swipe-right"
-                    self.complex_gesture_timestamp = time.time()
-
-                elif vx < -self.SWIPE_THRESHOLD:
-                    # print("[Right] Pinch-hold => swipe-left.")
-                    self.complex_state = "swipe-left"
-                    self.complex_gesture_timestamp = time.time()
-
-                else:
-                    # If we were in any swipe state, but now below threshold, reset
-                    if self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
-                        # print("[Right] Velocity fell below threshold; resetting complex gesture.")
-                        self.complex_state = "idle"
-                        self.complex_gesture_timestamp = time.time()
+                # Check for swipe logic
+                self._check_for_pinch_swipe()
 
             else:
-                # print("[Right] Pinch-hold ended.")
+                # End pinch
                 self.press_up()
-                self.complex_state = "idle"
-                self.hand_state["right"] = "idle"
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
 
-        elif current_state == "grab-pressing":
-            if gesture == "grab":
+        # -------------------------------------------------------------
+        #        GRAB-AWAY: pressing -> holding
+        # -------------------------------------------------------------
+        elif current_state == "grab-away-pressing":
+            if gesture == "grab_palm_away":
                 elapsed = current_time - self.hand_press_time["right"]
                 if elapsed >= self.hold_threshold:
-                    self.hand_state["right"] = "grab-holding"
-                    # print("[Right] Grab-hold => scrolling mode.")
+                    self.hand_state["right"] = "grab-away-holding"
+                    # e.g., start scrolling mode
             else:
-                # print("[Right] Short grab => do nothing.")
-                self.hand_state["right"] = "idle"
+                # Lost gesture => revert to open palm
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
 
-        elif current_state == "grab-holding":
-            if gesture == "grab":
+        elif current_state == "grab-away-holding":
+            if gesture == "grab_palm_away":
                 self.scroll_with_displacement(palm_y)
             else:
-                # print("[Right] Grab scroll ended.")
-                self.hand_state["right"] = "idle"
+                # End or orientation changed => open palm
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
 
-    def update_left_hand_state(self, grab_strength, pinch_strength, palm_y):
-        """Simple state machine for the left hand (pinch => draw, etc.)."""
+        # -------------------------------------------------------------
+        #        GRAB-TOWARDS: pressing -> holding
+        # -------------------------------------------------------------
+        elif current_state == "grab-towards-pressing":
+            if gesture == "grab_palm_towards":
+                elapsed = current_time - self.hand_press_time["right"]
+                if elapsed >= self.hold_threshold:
+                    self.hand_state["right"] = "grab-towards-holding"
+                    # e.g., do something special
+            else:
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
+
+        elif current_state == "grab-towards-holding":
+            if gesture == "grab_palm_towards":
+                self.scroll_with_displacement(palm_y)
+            else:
+                if palm_orientation == "palm_away":
+                    self.hand_state["right"] = "open-palm-away"
+                else:
+                    self.hand_state["right"] = "open-palm-towards"
+
+        # -------------------------------------------------------------
+        #   Unhandled fallback
+        # -------------------------------------------------------------
+        else:
+            # Some leftover pinch or unknown states => revert to open palm
+            if palm_orientation == "palm_away":
+                self.hand_state["right"] = "open-palm-away"
+            else:
+                self.hand_state["right"] = "open-palm-towards"
+
+
+
+
+    def update_left_hand_state(self, grab_strength, pinch_strength, palm_y, dot_product):
+        """
+        Extended state machine for the left hand, including orientation-based
+        open palm states (open-palm-away / open-palm-towards).
+
+        States handled:
+        - "open-palm-away" / "open-palm-towards" (default if not pinch/grab)
+        - "pinch-pressing" / "pinch-holding"
+        - "grab-away-pressing" / "grab-away-holding"
+        - "grab-towards-pressing" / "grab-towards-holding"
+        """
         current_time  = time.time()
         current_state = self.hand_state["left"]
 
         pinch_active = (pinch_strength >= self.pinch_threshold)
         grab_active  = (grab_strength >= self.grab_threshold)
 
+        # Determine palm orientation: dot < 0 => palm_away, dot >= 0 => palm_towards
+        palm_orientation = "palm_away" if (dot_product < 0) else "palm_towards"
+
+        # Decide basic gesture
         gesture = None
         if pinch_active and (pinch_strength > grab_strength):
             gesture = "pinch"
         elif grab_active:
-            gesture = "grab"
+            if palm_orientation == "palm_away":
+                gesture = "grab_palm_away"
+            else:
+                gesture = "grab_palm_towards"
 
-        if current_state == "idle":
+        # -------------------------------------------------------------
+        #   OPEN-PALM states => default if no pinch/grab
+        #   (Replacing the old "idle" logic)
+        # -------------------------------------------------------------
+        if current_state in ("idle", "open-palm-away", "open-palm-towards"):
             if gesture == "pinch":
                 self.hand_state["left"] = "pinch-pressing"
                 self.hand_press_time["left"] = current_time
+                # e.g., begin drawing
                 self.canvas.begin_drawing()
 
-            elif gesture == "grab":
-                self.hand_state["left"] = "grab-pressing"
+            elif gesture == "grab_palm_away":
+                self.hand_state["left"] = "grab-away-pressing"
                 self.hand_press_time["left"] = current_time
-                # print("[Left] Grab start => maybe reset canvas?")
+                # e.g., possibly track last_scroll_y or do something else
 
+            elif gesture == "grab_palm_towards":
+                self.hand_state["left"] = "grab-towards-pressing"
+                self.hand_press_time["left"] = current_time
+                # e.g., possibly track last_scroll_y or do something else
+
+            else:
+                # No pinch/grab => remain in open-palm-away or open-palm-towards
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
+
+        # -------------------------------------------------------------
+        #        PINCH-PRESSING
+        # -------------------------------------------------------------
         elif current_state == "pinch-pressing":
             if gesture == "pinch":
                 elapsed = current_time - self.hand_press_time["left"]
                 if elapsed >= self.hold_threshold:
                     self.hand_state["left"] = "pinch-holding"
-                    # print("[Left] Pinch-hold started => begin drawing.")
-                    self.canvas.begin_drawing()
+                    # e.g., keep drawing
             else:
                 # short pinch => short click
                 elapsed = current_time - self.hand_press_time["left"]
                 if elapsed < self.hold_threshold:
-                    # print("[Left] Short pinch => click.")
                     self.trigger_click_event()
+                # end pinch => stop drawing
                 self.canvas.stop_drawing()
-                self.hand_state["left"] = "idle"
 
+                # revert to open palm
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
+
+        # -------------------------------------------------------------
+        #        PINCH-HOLDING
+        # -------------------------------------------------------------
         elif current_state == "pinch-holding":
             if gesture == "pinch":
+                # e.g., keep drawing
                 pass
             else:
-                # print("[Left] Pinch-hold ended.")
+                # end pinch
                 self.canvas.stop_drawing()
-                self.hand_state["left"] = "idle"
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
 
-        elif current_state == "grab-pressing":
-            if gesture == "grab":
+        # -------------------------------------------------------------
+        #        GRAB-AWAY: pressing -> holding
+        # -------------------------------------------------------------
+        elif current_state == "grab-away-pressing":
+            if gesture == "grab_palm_away":
                 elapsed = current_time - self.hand_press_time["left"]
                 if elapsed >= self.hold_threshold:
-                    self.hand_state["left"] = "grab-holding"
+                    self.hand_state["left"] = "grab-away-holding"
+                    # e.g., clear gesture screen or prepare to scroll
                     self.canvas.clear_gesture_screen()
-                    # print("[Left] Grab-hold => clear canvas.")
             else:
-                # print("[Left] Short grab => do nothing.")
-                self.hand_state["left"] = "idle"
+                # short grab => do nothing
+                # revert to open palm
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
 
-        elif current_state == "grab-holding":
-            if gesture == "grab":
+        elif current_state == "grab-away-holding":
+            if gesture == "grab_palm_away":
+                # e.g., scroll or maintain grab
                 self.scroll_with_displacement(palm_y)
             else:
-                # print("[Left] Grab ended => stop scrolling, clear canvas.")
-                self.canvas.clear_gesture_screen()
-                self.hand_state["left"] = "idle"
+                # end grab => revert to open palm
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
+
+        # -------------------------------------------------------------
+        #        GRAB-TOWARDS: pressing -> holding
+        # -------------------------------------------------------------
+        elif current_state == "grab-towards-pressing":
+            if gesture == "grab_palm_towards":
+                elapsed = current_time - self.hand_press_time["left"]
+                if elapsed >= self.hold_threshold:
+                    self.hand_state["left"] = "grab-towards-holding"
+                    # e.g., do something special (or also clear gesture screen)
+                    self.canvas.clear_gesture_screen()
+            else:
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
+
+        elif current_state == "grab-towards-holding":
+            if gesture == "grab_palm_towards":
+                # e.g., keep scrolling or do something else
+                self.scroll_with_displacement(palm_y)
+            else:
+                # end grab => revert to open palm
+                if palm_orientation == "palm_away":
+                    self.hand_state["left"] = "open-palm-away"
+                else:
+                    self.hand_state["left"] = "open-palm-towards"
+
+        # -------------------------------------------------------------
+        #  Fallback to open palm
+        # -------------------------------------------------------------
+        else:
+            if palm_orientation == "palm_away":
+                self.hand_state["left"] = "open-palm-away"
+            else:
+                self.hand_state["left"] = "open-palm-towards"
+
 
     # --------------------
     # Setup mode
