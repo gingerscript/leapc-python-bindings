@@ -77,6 +77,7 @@ class Canvas:
                     print(f"Best match: {best_match} (Hausdorff={best_score:.2f})")
                 else:
                     print("No valid reference files found.")
+                    self.drawn_gesture = None
         
         self.clear_gesture_screen()
 
