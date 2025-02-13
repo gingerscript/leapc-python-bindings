@@ -319,6 +319,7 @@ class ActionController:
             print(f"[ActionController] Detected new drawn gesture: {recognized_gesture}")
             self.complex_state = recognized_gesture
             self.complex_gesture_timestamp = time.time()
+        
             
 
         # ---- AFTER processing all hands ----
