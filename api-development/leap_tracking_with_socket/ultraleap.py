@@ -147,13 +147,13 @@ class UltraLeapListener(leap.Listener):
                         "w":hand.arm.rotation.w,
                     },
                 }
-        self.before_tracking_dispatch(event,data)
+        
         # Step 4: Emit to server (no local file writes)
         if self.init_counter < 4: # emit every 4 frames to prevent IO bottleneck
             self.init_counter += 1
         else:
             self.init_counter = 0
-            
+            self.before_tracking_dispatch(event,data)
             self.dispatch(data)
         return data
     def before_run(self):
