@@ -69,6 +69,7 @@
             <h2>Complex Gesture</h2>
             <p>Gesture: <span id="complex_gesture">N/A</span></p>
             <p>Timestamp: <span id="complex_timestamp">N/A</span></p>
+            <p>Zoom: <span id="zoom_multiplier">N/A</span></p>
         </div>
     </div>
 
@@ -96,6 +97,7 @@
         // HTML elements for Complex Gesture
         const complexGestureEl = document.getElementById("complex_gesture");
         const complexTimestampEl = document.getElementById("complex_timestamp");
+        const zoomMultiplierEl = document.getElementById("zoom_multiplier");
 
         // The two balls for left/right
         const ballLeft  = document.getElementById("ball_left");
@@ -120,9 +122,9 @@
             leftYEl.textContent = leftPos.y.toFixed(2);
             leftZEl.textContent = leftPos.z.toFixed(2);
             leftGestureEl.textContent = leftHand.gesture || "N/A";
-            // Convert nanosecond timestamp to seconds
+            // Convert to seconds if needed, or just show as-is
             leftTimestampEl.textContent = leftHand.timestamp
-                ? (leftHand.timestamp / 1e9).toFixed(3)
+                ? leftHand.timestamp.toFixed(3)
                 : "N/A";
 
             /*** RIGHT HAND ***/
@@ -134,15 +136,24 @@
             rightZEl.textContent = rightPos.z.toFixed(2);
             rightGestureEl.textContent = rightHand.gesture || "N/A";
             rightTimestampEl.textContent = rightHand.timestamp
-                ? (rightHand.timestamp / 1e9).toFixed(3)
+                ? rightHand.timestamp.toFixed(3)
                 : "N/A";
 
             /*** COMPLEX GESTURE ***/
             const complex = data.complex_gesture || {};
             complexGestureEl.textContent = complex.gesture || "N/A";
             complexTimestampEl.textContent = complex.gesture_timestamp
-                ? (complex.gesture_timestamp / 1e9).toFixed(3)
+                ? complex.gesture_timestamp.toFixed(3)
                 : "N/A";
+
+            // If there's a zoom object, show the multiplier
+            if (complex.zoom) {
+                zoomMultiplierEl.textContent = complex.zoom.multiplier
+                    ? complex.zoom.multiplier.toFixed(2)
+                    : "N/A";
+            } else {
+                zoomMultiplierEl.textContent = "N/A";
+            }
 
             /*** Move the “ball_left” based on the left hand ***/
             // Basic range mapping. Modify as needed.
