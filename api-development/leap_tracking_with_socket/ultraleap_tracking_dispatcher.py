@@ -1,11 +1,11 @@
 # import server
 import socketio
-from ultraleap import UltraLeap, UltraLeapListener
+from ultraleap import UltraLeap, UltraLeapActionListener
 
 ############################################# 
 # UltraLeap Socket listener 
 ############################################# 
-class UltraLeapSocketListener(UltraLeapListener):
+class UltraLeapSocketListener(UltraLeapActionListener):
     def __init__(self, url):
         super().__init__()
         self.connect_socket(url)
@@ -26,12 +26,14 @@ class UltraLeapSocketListener(UltraLeapListener):
                 print(f"[SocketIO] Emit failed: {e}")
 
     def dispose(self):
+        super().dispose()
         self.sio.disconnect()
 
 if __name__ == "__main__":
     # Process(target=UltraLeap,args={UltraLeapSocketListener(url="http://localhost:5000"),},daemon=True).start()
     # while True:
     #     __name__
-    UltraLeap(UltraLeapSocketListener(url="http://localhost:5000"))
-    
+    leap_listener = UltraLeapSocketListener(url="http://localhost:5000")
+    UltraLeap(leap_listener)
+    leap_listener.dispose()
     
