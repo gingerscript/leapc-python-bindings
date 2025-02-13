@@ -28,6 +28,7 @@ class UltraLeapSocketListener(UltraLeapActionListener):
     def dispose(self):
         super().dispose()
         self.sio.disconnect()
+        print(f"[SocketIO] Disconnected")
 
 if __name__ == "__main__":
     # Process(target=UltraLeap,args={UltraLeapSocketListener(url="http://localhost:5000"),},daemon=True).start()

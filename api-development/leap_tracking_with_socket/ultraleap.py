@@ -85,74 +85,71 @@ class UltraLeapListener(leap.Listener):
         pass
     def on_tracking_event(self, event):
         timestamp = time.time_ns()/1000000
-        # dispatch per 20ms
-        if(timestamp-self.tracking_response_time > 20):
-            self.tracking_response_time = timestamp
-            data = {
-                    "timestamp":timestamp,
-                    "hands":{},
-                    "hand_count":len(event.hands)
-                }
-            if len(event.hands) > 0:
-                for hand_index in range(0,len(event.hands)):
-                    hand = event.hands[hand_index]
-                    chirality = int(hand.type.value)
+        data = {
+                "timestamp":timestamp,
+                "hands":{},
+                "hand_count":len(event.hands)
+            }
+        if len(event.hands) > 0:
+            for hand_index in range(0,len(event.hands)):
+                hand = event.hands[hand_index]
+                chirality = int(hand.type.value)
+                
+                if chirality == 0:
+                    data["hands"]["left"]={}
+                    hand_data = data["hands"]["left"]
+                else:
+                    data["hands"]["right"]={}
+                    hand_data = data["hands"]["right"]
+
+                palm = hand.palm
                     
-                    if chirality == 0:
-                        data["hands"]["left"]={}
-                        hand_data = data["hands"]["left"]
-                    else:
-                        data["hands"]["right"]={}
-                        hand_data = data["hands"]["right"]
+                hand_data["palm"] = {
+                    "position":[palm.position[0],palm.position[1],palm.position[2]],
+                    "velocity":list(palm.velocity),
+                    "normal":list(palm.normal),
+                    "stabilized_position":list(palm.stabilized_position),
+                    "direction":list(palm.direction),
+                    "orientation":{
+                        "x":palm.orientation.x,
+                        "y":palm.orientation.y,
+                        "z":palm.orientation.z,
+                        "w":palm.orientation.w,
+                    },
+                    "width":palm.width,
+                }
 
-                    palm = hand.palm
-                        
-                    hand_data["palm"] = {
-                        "position":list(palm.position),
-                        "velocity":list(palm.velocity),
-                        "normal":list(palm.normal),
-                        "stabilized_position":list(palm.stabilized_position),
-                        "direction":list(palm.direction),
-                        "orientation":{
-                            "x":palm.orientation.x,
-                            "y":palm.orientation.y,
-                            "z":palm.orientation.z,
-                            "w":palm.orientation.w,
-                        },
-                        "width":palm.width,
-                    }
+                hand_data["pinch_strength"] = hand.pinch_strength
+                hand_data["grab_strength"] = hand.grab_strength
+                hand_data["id"] = hand.id
+                hand_data["flags"] = hand.flags
+                hand_data["confidence"] = hand.confidence
+                hand_data["visible_time"] = hand.visible_time
+                hand_data["pinch_distance"] = hand.pinch_distance
+                hand_data["grab_angle"] = hand.grab_angle
 
-                    hand_data["pinch_strength"] = hand.pinch_strength
-                    hand_data["grab_strength"] = hand.grab_strength
-                    hand_data["id"] = hand.id
-                    hand_data["flags"] = hand.flags
-                    hand_data["confidence"] = hand.confidence
-                    hand_data["visible_time"] = hand.visible_time
-                    hand_data["pinch_distance"] = hand.pinch_distance
-                    hand_data["grab_angle"] = hand.grab_angle
-
-                    # finger data
-                    hand_data["fingers"]=[]
-                    for finger_index in range(0, len(hand.digits)):
-                        digit = hand.digits[finger_index]
-                        hand_data["fingers"].append([])
-                        for bone_index in range(0, 4):
-                            bone = digit.bones[bone_index]
-                            hand_data["fingers"][finger_index].append([list(bone.next_joint)])
-                    # arm data
-                    hand_data["arm"]={
-                        "prev_joint":list(hand.arm.prev_joint),
-                        "next_joint":list(hand.arm.next_joint),
-                        "width":hand.arm.width,
-                        "rotation":{
-                            "x":hand.arm.rotation.x,
-                            "y":hand.arm.rotation.y,
-                            "z":hand.arm.rotation.z,
-                            "w":hand.arm.rotation.w,
-                        },
-                    }
-                self.before_tracking_dispatch(event,data)
-                self.dispatch(data)
+                # finger data
+                hand_data["fingers"]=[]
+                for finger_index in range(0, len(hand.digits)):
+                    digit = hand.digits[finger_index]
+                    hand_data["fingers"].append([])
+                    for bone_index in range(0, 4):
+                        bone = digit.bones[bone_index]
+                        hand_data["fingers"][finger_index].append([list(bone.next_joint)])
+                # arm data
+                hand_data["arm"]={
+                    "prev_joint":list(hand.arm.prev_joint),
+                    "next_joint":list(hand.arm.next_joint),
+                    "width":hand.arm.width,
+                    "rotation":{
+                        "x":hand.arm.rotation.x,
+                        "y":hand.arm.rotation.y,
+                        "z":hand.arm.rotation.z,
+                        "w":hand.arm.rotation.w,
+                    },
+                }
+            self.before_tracking_dispatch(event,data)
+            self.dispatch(data)
             
     def before_run(self):
         pass
