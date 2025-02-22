@@ -2,3 +2,9 @@ build
 cffi
 opencv-python
 numpy
+eventlet
+flask
+flask_socketio
+scipy
+requests
+websocket-client

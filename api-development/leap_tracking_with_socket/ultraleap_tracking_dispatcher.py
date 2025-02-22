@@ -34,7 +34,7 @@ if __name__ == "__main__":
     # Process(target=UltraLeap,args={UltraLeapSocketListener(url="http://localhost:5000"),},daemon=True).start()
     # while True:
     #     __name__
-    leap_listener = UltraLeapSocketListener(url="http://127.0.0.1:5000")
+    leap_listener = UltraLeapSocketListener(url="http://localhost:5000")
     UltraLeap(leap_listener)
     leap_listener.dispose()
     
