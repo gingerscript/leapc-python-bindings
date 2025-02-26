@@ -20,7 +20,7 @@ def normalize(x, y, z):
 
 class HandTrackerBuffer:
     def __init__(self, maxlen=10):
-        # We’ll keep up to 10 frames of data
+        # We'll keep up to 10 frames of data
         self.data_buffer = deque(maxlen=maxlen)
     
     def append(self, event):
@@ -127,7 +127,7 @@ class ActionController:
         self.grab_threshold  = 0.9
         self.hold_threshold  = 0.1
 
-        # For “grab to scroll”
+        # For "grab to scroll"
         self.scroll_sensitivity = 0.8
         self.last_scroll_y = 0.0
 
@@ -143,6 +143,13 @@ class ActionController:
         # Screen resolution
         self.screen_width  = 1920
         self.screen_height = 1080
+
+        self.pinch_timer = 0.0  # Timer to track time since last pinch
+        self.pinch_timeout = 0.5  # Time frame to consider a swipe after pinch (in seconds)
+        self.last_pinch_time = 0.0  # Last time a pinch was detected
+
+        self.gesture_timeout = 1.0  # Time frame to reset complex gesture (in seconds)
+        self.last_gesture_time = 0.0  # Last time a gesture was observed
 
     # -------------------------------------------------------------------------
     #  get_state() -> JSON with positional, gesture, and timestamp info
@@ -302,10 +309,8 @@ class ActionController:
             # For determining hand orientation
             device_forward = np.array([0, 0, 1])  # Leap Motion is typically +Z
             palm_normal = np.array([hand.palm.normal.x, hand.palm.normal.y, hand.palm.normal.z])
-            dot_product = np.dot(palm_normal, device_forward) # if negative palm is facing device, positive is facing away
+            dot_product = np.dot(palm_normal, device_forward)  # if negative palm is facing device, positive is facing away
             
-            
-                
             if hand_type == "right":
                 px, py = hand.palm.position.x, hand.palm.position.y
                 self.move_cursor(px, py, 1, 1)  # Only moves mouse if enable_control = True
@@ -314,20 +319,38 @@ class ActionController:
             elif hand_type == "left":
                 self.update_left_hand_state(hand.grab_strength, hand.pinch_strength, hand.palm.position.y, dot_product)
 
+        # Check for swipe after pinch regardless of current state
+        self._check_for_pinch_swipe()
+
+        # Check if index fingers are overlapping or crossed
+        crossed_finger_status = self.check_finger_cross(event.hands)
+
+        if crossed_finger_status["overlapping"]:
+            print("[Gesture] Index fingers are overlapping!")
+            if crossed_finger_status["crossed"]:
+                print("[Gesture] Index fingers are crossed!")
+                self.complex_state = "finger-cross"  # Set complex state to finger-cross
+
         recognized_gesture = self.canvas.get_and_forget_drawn_gesture()
+        
         if recognized_gesture:
             print(f"[ActionController] Detected new drawn gesture: {recognized_gesture}")
             self.complex_state = recognized_gesture
             self.complex_gesture_timestamp = time.time()
+            self.last_gesture_time = time.time()  # Update last gesture time
         
-            
-
         # ---- AFTER processing all hands ----
         # If the right hand is missing but we are stuck on a swipe, reset to idle
         if "right" not in present_hands and self.complex_state != "idle":
             # print("[Controller] Right hand lost => resetting complex gesture to idle.")
             self.complex_state = "idle"
             self.complex_gesture_timestamp = time.time()   
+        
+        # Reset complex gesture if no gestures have been observed for a while
+        current_time = time.time()
+        if current_time - self.last_gesture_time > self.gesture_timeout:
+            self.complex_state = "idle"
+            self.last_gesture_time = current_time  # Reset the last gesture time
         
         # -----------------------------------------------------
         # ZOOM LOGIC: Check if both hands are in a grab-holding
@@ -372,34 +395,29 @@ class ActionController:
              
     def _check_for_pinch_swipe(self):
         """
-        Checks the right hand velocity (vx, vy, vz) during pinch-holding
-        and sets self.complex_state accordingly if a swipe is detected.
+        Checks for swipe gestures while pinch-holding or after pinch is released.
         """
-        vx, vy, vz = self.right_hand_velocity
+        current_time = time.time()
+        time_since_last_pinch = current_time - self.last_pinch_time
 
-        # Check vertical velocity first (up/down)
-        if vy > self.SWIPE_THRESHOLD:
-            self.complex_state = "swipe-up"
-            self.complex_gesture_timestamp = time.time()
-        elif vy < -self.SWIPE_THRESHOLD:
-            self.complex_state = "swipe-down"
-            self.complex_gesture_timestamp = time.time()
+        # Check if the time since the last pinch is within the timeout period
+        if time_since_last_pinch <= self.pinch_timeout:
+            # Implement logic to check for swipe gestures
+            vx, vy, vz = self.right_hand_velocity
 
-        # Check horizontal velocity (left/right)
-        elif vx > self.SWIPE_THRESHOLD:
-            self.complex_state = "swipe-right"
-            self.complex_gesture_timestamp = time.time()
-        elif vx < -self.SWIPE_THRESHOLD:
-            self.complex_state = "swipe-left"
-            self.complex_gesture_timestamp = time.time()
+            # Check if the velocity exceeds the swipe threshold
+            if abs(vx) > self.SWIPE_THRESHOLD or abs(vy) > self.SWIPE_THRESHOLD:
+                if vx > self.SWIPE_THRESHOLD:
+                    self.complex_state = "swipe-right"
+                elif vx < -self.SWIPE_THRESHOLD:
+                    self.complex_state = "swipe-left"
+                elif vy > self.SWIPE_THRESHOLD:
+                    self.complex_state = "swipe-up"
+                elif vy < -self.SWIPE_THRESHOLD:
+                    self.complex_state = "swipe-down"
 
-        else:
-            # If we already have a swipe state and it goes below threshold,
-            # you might reset to idle or do nothing
-            if self.complex_state in ["swipe-up", "swipe-down", "swipe-left", "swipe-right"]:
-                self.complex_state = "idle"
-                self.complex_gesture_timestamp = time.time()
-    
+                self.complex_gesture_timestamp = time.time()  # Update the timestamp for the gesture
+
     def distance_between_hands(self):
         """
         Returns the 3D distance between left and right palm positions (in mm),
@@ -487,7 +505,68 @@ class ActionController:
 
         return None
 
+    def check_finger_cross(self, hands, overlap_threshold=40.0, orthogonal_threshold=0.35):
+        """
+        Checks if the index fingers of both hands are overlapping and/or crossed.
+        """
+        left_hand = None
+        right_hand = None
 
+        # Ensure only two hands are being processed
+        if len(hands) > 2:
+            raise Exception("Too many hands detected! Limit detection to two.")
+
+        # Identify left and right hands
+        for hand in hands:
+            if hand.type.value == 0:
+                left_hand = hand
+            else:
+                right_hand = hand
+
+        # If either hand is missing, we cannot check
+        if not left_hand or not right_hand:
+            return {"overlapping": False, "crossed": False}
+
+        # ---- Overlapping Check ----
+        left_middle_tip = left_hand.index.proximal.next_joint
+        right_middle_tip = right_hand.index.proximal.next_joint
+
+        # Compute Euclidean distance between tips of fingers
+        distance = math.sqrt(
+            (left_middle_tip.x - right_middle_tip.x) ** 2 +
+            (left_middle_tip.y - right_middle_tip.y) ** 2 +
+            (left_middle_tip.z - right_middle_tip.z) ** 2
+        )
+
+        are_overlapping = distance < overlap_threshold
+
+        # ---- Orthogonality Check ----
+        left_dir = (
+            left_hand.index.distal.next_joint.x - left_hand.index.proximal.prev_joint.x,
+            left_hand.index.distal.next_joint.y - left_hand.index.proximal.prev_joint.y,
+            left_hand.index.distal.next_joint.z - left_hand.index.proximal.prev_joint.z,
+        )
+
+        right_dir = (
+            right_hand.index.distal.next_joint.x - right_hand.index.proximal.prev_joint.x,
+            right_hand.index.distal.next_joint.y - right_hand.index.proximal.prev_joint.y,
+            right_hand.index.distal.next_joint.z - right_hand.index.proximal.prev_joint.z,
+        )
+
+        # Normalize the vectors
+        left_dir = normalize(*left_dir)
+        right_dir = normalize(*right_dir)
+
+        # Compute dot product
+        dot_product = (
+            left_dir[0] * right_dir[0] +
+            left_dir[1] * right_dir[1] +
+            left_dir[2] * right_dir[2]
+        )
+
+        are_crossed = abs(dot_product) < orthogonal_threshold
+
+        return {"overlapping": are_overlapping, "crossed": are_crossed}
 
     def update_right_hand_state(self, grab_strength, pinch_strength, palm_y, dot_product):
         """
@@ -568,7 +647,8 @@ class ActionController:
         # -------------------------------------------------------------
         elif current_state == "pinch-holding":
             if gesture == "pinch":
-                self._check_for_pinch_swipe()
+                self.last_pinch_time = time.time()  # Update last pinch time
+                self._check_for_pinch_swipe()  # Check for swipe while pinch-holding
             else:
                 # end pinch
                 self.press_up()
@@ -576,7 +656,8 @@ class ActionController:
                     self.hand_state["right"] = "open-palm-away"
                 else:
                     self.hand_state["right"] = "open-palm-towards"
-
+                # If the pinch gesture is released, start the timer
+                self.pinch_timer = time.time()  # Reset the timer
         # -------------------------------------------------------------
         #   GRAB-AWAY: pressing -> holding
         # -------------------------------------------------------------
