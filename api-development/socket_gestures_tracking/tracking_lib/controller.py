@@ -99,7 +99,7 @@ class HandTrackerBuffer:
 class ActionController:
     MOUSEEVENTF_LEFTDOWN = 0x0002
     MOUSEEVENTF_LEFTUP   = 0x0004
-    SWIPE_THRESHOLD = 800
+    SWIPE_THRESHOLD = 650
 
     def __init__(self, canvas, enable_control=False):
         """
@@ -148,7 +148,7 @@ class ActionController:
         self.pinch_timeout = 0.5  # Time frame to consider a swipe after pinch (in seconds)
         self.last_pinch_time = 0.0  # Last time a pinch was detected
 
-        self.gesture_timeout = 1.0  # Time frame to reset complex gesture (in seconds)
+        self.gesture_timeout = 0.3  # Time frame to reset complex gesture (in seconds)
         self.last_gesture_time = 0.0  # Last time a gesture was observed
 
     # -------------------------------------------------------------------------
@@ -326,9 +326,9 @@ class ActionController:
         crossed_finger_status = self.check_finger_cross(event.hands)
 
         if crossed_finger_status["overlapping"]:
-            print("[Gesture] Index fingers are overlapping!")
+            # print("[Gesture] Index fingers are overlapping!")  # Removed print statement
             if crossed_finger_status["crossed"]:
-                print("[Gesture] Index fingers are crossed!")
+                # print("[Gesture] Index fingers are crossed!")  # Removed print statement
                 self.complex_state = "finger-cross"  # Set complex state to finger-cross
 
         recognized_gesture = self.canvas.get_and_forget_drawn_gesture()
@@ -589,7 +589,8 @@ class ActionController:
 
         # Decide if user is pinching or grabbing:
         gesture = None
-        if pinch_active and (pinch_strength > grab_strength):
+        # Check if pinch is active and index finger is not extended
+        if pinch_active and (pinch_strength > grab_strength) and not self.curr_hand.index.is_extended:
             gesture = "pinch"
         elif grab_active:
             if palm_orientation == "palm_away":
@@ -658,6 +659,7 @@ class ActionController:
                     self.hand_state["right"] = "open-palm-towards"
                 # If the pinch gesture is released, start the timer
                 self.pinch_timer = time.time()  # Reset the timer
+
         # -------------------------------------------------------------
         #   GRAB-AWAY: pressing -> holding
         # -------------------------------------------------------------
@@ -756,9 +758,9 @@ class ActionController:
         grab_active  = (grab_strength >= self.grab_threshold)
 
         palm_orientation = "palm_away" if (dot_product < 0) else "palm_towards"
-
         gesture = None
-        if pinch_active and (pinch_strength > grab_strength):
+        # checks if index finger 
+        if pinch_active and (pinch_strength > grab_strength) and not self.curr_hand.index.is_extended: # this is_extended was added as a pinch would be registered when making a pointer finger
             gesture = "pinch"
         elif grab_active:
             if palm_orientation == "palm_away":
