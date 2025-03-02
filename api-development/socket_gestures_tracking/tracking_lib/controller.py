@@ -145,7 +145,7 @@ class ActionController:
         self.screen_height = 1080
 
         self.pinch_timer = 0.0  # Timer to track time since last pinch
-        self.pinch_timeout = 0.5  # Time frame to consider a swipe after pinch (in seconds)
+        self.pinch_timeout = 0.1  # Time frame to consider a swipe after pinch (in seconds)
         self.last_pinch_time = 0.0  # Last time a pinch was detected
 
         self.gesture_timeout = 0.3  # Time frame to reset complex gesture (in seconds)
